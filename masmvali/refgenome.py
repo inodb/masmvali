@@ -39,7 +39,7 @@ class Reference(EqualNameImpliesEquality):
         for os in other_strains:
             max_tl = max(tax_order[self.get_lca(os, missing_value=missing_value)[0]], max_tl)
 
-        return(max_tl)
+        return((self.TAX_LVLS[max_tl], self.phyl[self.TAX_LVLS[max_tl]]))
 
     def get_lca(self, strain, missing_value="N/A"):
         """Get the Lowest Common Ancestor between strain and self.
@@ -48,11 +48,14 @@ class Reference(EqualNameImpliesEquality):
         """
         assert(isinstance(strain, self.__class__))
 
-        for rank in self.phyl:
+        for rank in self.TAX_LVLS:
             if self.phyl[rank] == strain.phyl[rank] != missing_value:
                 return (rank, strain.phyl[rank])
-            else:
-                raise(Exception("No LCA? Not a cellular organism?"))
+
+        raise(Exception("No LCA? Not a cellular organism?"))
+
+    def __str__(self):
+        return(self.name)
 
 
 class ReferenceSet():

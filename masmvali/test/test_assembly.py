@@ -20,8 +20,9 @@ def test_assemblyvalidation():
     bamref = get_testfile('cm-500pgun-ref-bam')
     refstatsfile = get_testfile('cm-500pgun-ref-stats')
     refphylfile = get_testfile('cm-ref-phyl')
+    nucmercoords = get_testfile('cm-500pgun-val-nucmer')
 
-    val = AssemblyValidation(bamref, bamasm, refphylfile, refstatsfile, contigfa)
+    val = AssemblyValidation(bamref, bamasm, refphylfile, refstatsfile, contigfa, nucmercoords)
     assert(len(val.contigs) == int(get_shell_output("grep -c '^>' " + contigfa)[0]))
 
     make_dir(get_outdir() + "masm")
@@ -32,7 +33,7 @@ def test_assemblyvalidation():
 
 
 def main():
-    test_read_contig_mappings()
+    #test_read_contig_mappings()
     test_assemblyvalidation()
 
 

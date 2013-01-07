@@ -1,6 +1,7 @@
 from collections import namedtuple, Counter, defaultdict, MutableMapping
 import re
 
+import nucmer
 import pysam
 
 from refgenome import EqualNameImpliesEquality, ReferenceSet, Reference
@@ -79,8 +80,8 @@ class ReadDict():
                 return None
 
             self.amb_stats = self.ReadStats(dom_strain=mc[0][0], dom_nr_reads=mc[0][1],
-                                     read_level_purity=float(mc[0][1] /
-                                     len(self.unamb_reads)))
+                                     read_level_purity=float(mc[0][1]) /
+                                     (len(self.unamb_reads) + len(self.amb_reads)))
             return(self.amb_stats)
 
     def get_unamb_nr_reads_per_taxon(self):
@@ -104,10 +105,16 @@ class ReadDict():
             return(dict([(t, 0) for t in Reference.TAX_LVLS]))
 
     def get_amb_nr_reads_per_taxon(self):
-        if self.get_amb_stats() is not None:
+        amb_stats = self.get_amb_stats()
+        if amb_stats is not None:
             tax_count = self.get_unamb_nr_reads_per_taxon()
+            # Determine tax count based on the dominant strain. Every ambiguous
+            # read is assigned to the reference with the highest LCA. TODO: In
+            # case the dominant strain is also part of the references of the
+            # ambiguous reads, don't we want it to pick the lowest LCA in that
+            # case?
             for ar in self.amb_reads:
-                tax_count[self.unamb_stats.dom_strain.get_highest_lca(ar.references)] += 1
+                tax_count[amb_stats.dom_strain.get_highest_lca(ar.references)[0]] += 1
 
             # Add LCAs of lower taxonomic ranks to counts of higher ones (i.e. make
             # the counts ascending with increasing taxonomic rank):
@@ -138,21 +145,28 @@ class ReadDict():
     def str_stats(self, sep="\t", missing_value="N/A"):
         rv = ""
 
-        for s in self.get_amb_stats() or ([missing_value] * (len(ReadDict.get_stats_header()) / 2)):
-            rv += sep + str(s)
-        rv += str(len(self.amb_reads))
+        unamb_stats = self.get_unamb_stats()
+        if unamb_stats is not None:
+            rv += sep.join([str(s) for s in unamb_stats])
+            rv += sep + str(len(self.unamb_reads))
 
-        for s in self.get_unamb_stats() or ([missing_value] * (len(ReadDict.get_stats_header()) / 2)):
-            rv += sep + str(s)
-        rv += str(len(self.unamb_reads))
+            unamb_taxon_counts = self.get_unamb_nr_reads_per_taxon()
+            for t in Reference.TAX_LVLS:
+                rv += sep + str(unamb_taxon_counts[t])
+        else:
+            rv += sep.join([missing_value] * (len(ReadDict.get_stats_header()) / 2))
 
-        unamb_taxon_counts = self.get_unamb_nr_reads_per_taxon()
-        for t in Reference.TAX_LVLS:
-            rv += sep + str(unamb_taxon_counts[t])
+        amb_stats = self.get_amb_stats()
+        if amb_stats is not None:
+            for s in amb_stats:
+                rv += sep + str(s)
+            rv += sep + str(len(self.amb_reads))
 
-        amb_taxon_counts = self.get_amb_nr_reads_per_taxon()
-        for t in Reference.TAX_LVLS:
-            rv += sep + str(amb_taxon_counts[t])
+            amb_taxon_counts = self.get_amb_nr_reads_per_taxon()
+            for t in Reference.TAX_LVLS:
+                rv += sep + str(amb_taxon_counts[t])
+        else:
+            rv += sep + sep.join([missing_value] * (len(ReadDict.get_stats_header()) / 2))
 
         return(rv)
 
@@ -169,18 +183,21 @@ class Contig(EqualNameImpliesEquality):
             self.reads.add(read)
 
     def str_stats_header(self, sep="\t"):
-        return(sep.join(["contig", "contig_length", "max_aln_purity"] + ReadDict.get_stats_header()))
+        return(sep.join(["contig", "contig_length", "max_aln_strain", "max_aln_purity"] + ReadDict.get_stats_header()))
 
     def str_stats(self, sep="\t", missing_value="N/A"):
-        import ipdb; ipdb.set_trace()
+        rv = ""
+
+        rv += sep.join([self.name, str(self.length),
+            str(getattr(self, "max_aln_strain", missing_value)),
+            str(getattr(self, "max_aln_purity", missing_value))])
+        rv += sep
         if hasattr(self, "reads"):
-            #TODO: Taxons return 0 count if no reads exist instead of N/A, weird??
-            return(sep.join([self.name, str(self.length), str(getattr(self,
-                "max_aln_purity", missing_value))]) + sep + self.reads.str_stats(missing_value=missing_value))
+            rv += self.reads.str_stats(missing_value=missing_value)
         else:
-            #TODO: Taxons return 0 count if no reads exist instead of N/A, weird??
-            return(sep.join([self.name, str(self.length), str(getattr(self,
-                "max_aln_purity", missing_value))] + sep + [missing_value] * len(ReadDict.get_stats_header())))
+            rv += sep.join([missing_value] * len(ReadDict.get_stats_header()))
+
+        return(rv)
 
 
 class ContigDict(MutableMapping):
@@ -215,13 +232,15 @@ class ContigDict(MutableMapping):
 
 
 class AssemblyValidation():
-    def __init__(self, bamref, bamasm, refphylfile, refstatsfile, asmfa, cut_off=100):
+    def __init__(self, bamref, bamasm, refphylfile, refstatsfile, asmfa, nucmercoords, cut_off=100):
         self.bamref = bamref
         self.bamasm = bamasm
         self.asmfa = asmfa
         self.cut_off = 100
         self.refs = ReferenceSet(refphylfile, refstatsfile)
         self.reads, self.contigs = get_read_contig_mappings(bamref, bamasm, self.refs, asmfa, cut_off)
+        self.coords = nucmer.Coords(nucmercoords)
+        self.coords.calc_max_aln_purity_per_contig(self.contigs, self.cut_off)
 
 
 def get_read_contig_mappings(bamref, bamasm, refs, asmfa, cut_off=100):

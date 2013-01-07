@@ -6,7 +6,9 @@ import os
 import errno
 from collections import defaultdict
 
+
 MISSING_VALUE = "N/A"
+DELIMITER = "\t"
 
 
 def make_dir(directory):
@@ -90,17 +92,18 @@ def barplot_read_lcas(a, taxa, title="Barplot read LCA", outdir='.', baseout="ba
 def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
     # Make plots genome contig coverage
     outdir = masmdir + "/plots"
-    a = np.genfromtxt(
-        genome_contig_cov_tsv, names=True, dtype=None, missing_values=MISSING_VALUE, usemask=True)
     make_dir(outdir)
-    plot_n_save(a, "GC_content", "read_cov_ratio", "GC_content of genome", "Read coverage of genome", outdir)
-    plot_n_save(a, "GC_content", "genome_contig_cov_ratio", "GC_content of \
-            genome", "Contig coverage ratio of genome", outdir)
-    plot_n_save(a, "read_cov_ratio", "genome_contig_cov_ratio", "Read coverage \
-            ratio of genome", "Read coverage of genome", outdir)
+   #a = np.genfromtxt(
+   #    genome_contig_cov_tsv, names=True, dtype=None, missing_values=MISSING_VALUE, usemask=True)
+   #make_dir(outdir)
+   #plot_n_save(a, "GC_content", "read_cov_ratio", "GC_content of genome", "Read coverage of genome", outdir)
+   #plot_n_save(a, "GC_content", "genome_contig_cov_ratio", "GC_content of \
+   #        genome", "Contig coverage ratio of genome", outdir)
+   #plot_n_save(a, "read_cov_ratio", "genome_contig_cov_ratio", "Read coverage \
+   #        ratio of genome", "Read coverage of genome", outdir)
 
     # Make plots contig purity
-    a = np.genfromtxt(contig_purity_tsv, names=True,
+    a = np.genfromtxt(contig_purity_tsv, names=True, delimiter=DELIMITER,
                          dtype=None, missing_values=MISSING_VALUE, usemask=True)
     plot_n_save(a, "contig_length", "unamb_read_level_purity", "Contig length",
             "Unambiguous read level purity of contig", outdir)
@@ -149,7 +152,7 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
 
     # Output plots in HTML
     sdir = os.path.dirname(os.path.realpath(__file__))
-    template = open(sdir + '/../template/validate-template.html').read()
+    template = open(sdir + '/template/validate-template.html').read()
     with open(masmdir + '/index.html', 'w') as fh:
         fh.write(template.format(asmtsv='asm-stats.tsv',
                                  gcctsv='genome-contig-coverage.tsv',

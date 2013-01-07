@@ -9,7 +9,7 @@ class Coords:
         return(calc_genome_contig_cov_in_bases(self.cursor, cut_off))
 
     def calc_max_aln_purity_per_contig(self, contigs=None, cut_off=100):
-        return(calc_alignedbases_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
+        return(calc_max_aln_purity_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
 
     def calc_alignedbases_per_contig(self, contigs=None, cut_off=100):
         return(calc_alignedbases_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
@@ -97,9 +97,11 @@ def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100):
         for row in cursor.execute(query, dict(cut_off=cut_off)):
             # Length of the contig should already be set if this is a ContigSet
             # by parsing the fasta file
-            assert(contigs[row["QRYID"]].length == row["LENQ"])
+            # TODO: assertion fails because nucmer includes Ns
+            #assert(contigs[row["QRYID"]].length == row["LENQ"])
 
             q_max_aln_purity[row["QRYID"]].max_aln_purity = row["purity"]
+            q_max_aln_purity[row["QRYID"]].max_aln_strain = row["REFID"]
 
     return(q_max_aln_purity)
 
