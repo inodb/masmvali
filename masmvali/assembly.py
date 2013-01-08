@@ -98,7 +98,7 @@ class ReadDict():
             tot = 0
             for t in Reference.TAX_LVLS:
                 tax_count[t] += tot
-                tot += tax_count[t]
+                tot = tax_count[t]
 
             return(tax_count)
         else:
@@ -107,7 +107,9 @@ class ReadDict():
     def get_amb_nr_reads_per_taxon(self):
         amb_stats = self.get_amb_stats()
         if amb_stats is not None:
-            tax_count = self.get_unamb_nr_reads_per_taxon()
+            tax_count = defaultdict(int)
+            for ur in self.unamb_reads:
+                tax_count[iter(ur.references).next().get_lca(self.unamb_stats.dom_strain)[0]] += 1
             # Determine tax count based on the dominant strain. Every ambiguous
             # read is assigned to the reference with the highest LCA. TODO: In
             # case the dominant strain is also part of the references of the
@@ -121,7 +123,7 @@ class ReadDict():
             tot = 0
             for t in Reference.TAX_LVLS:
                 tax_count[t] += tot
-                tot += tax_count[t]
+                tot = tax_count[t]
 
             return(tax_count)
         else:
@@ -262,7 +264,8 @@ def get_read_contig_mappings(bamref, bamasm, refs, asmfa, cut_off=100):
             except KeyError:
                 r = Read(record.qname)
                 reads[record.qname] = r
-            r.add_ref(refs.get(reffile.getrname(record.tid)))
+            ref = refs.get(reffile.getrname(record.tid))
+            r.add_ref(ref)
 
     contigs = ContigDict()
     contigs.parse_fasta_lengths(asmfa)

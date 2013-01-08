@@ -20,6 +20,7 @@ def test_referenceset():
     # The LCA of Shewanella baltica strains should be on the species level
     sh1 = refs.get("Shewanella_baltica_OS185")
     sh2 = refs.get("Shewanella_baltica_OS223,")
+    assert(sh1.get_lca(sh1) == ('strain', 'Shewanella baltica OS185'))
     assert(sh1.get_lca(sh2) == ('species', 'Shewanella baltica'))
 
     # LCA of an Archaea and a Bacteria should be life
@@ -31,7 +32,7 @@ def test_referenceset():
     assert(ar.get_highest_lca([th, sh1, sh2]) == ('life', 'cellular organisms'))
     # Highest LCA of given bacteria is domain or superkingdom in NCBI naming
     assert(th.get_highest_lca([sh1, sh2]) == ('superkingdom', 'Bacteria'))
-
+    assert(sh1.get_highest_lca([sh1]) == ('strain', 'Shewanella baltica OS185'))
 
 def main():
     test_referenceset()

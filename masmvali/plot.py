@@ -26,7 +26,7 @@ def savefig_multiple_ext(baseout):
     plt.savefig(baseout + ".png")
     plt.close()
 
-def percent_barplot(barvalues, outdir='.', title="Barplot", baseout="barplot"):
+def percent_barplot(barvalues, outdir='.', title="Barplot", baseout="barplot", vlab='#'):
     """Plot a list of tuples [(barname, value), ...]" in a barplot. All values
     are expressed as a percentage of the sum of all values."""
     N = len(barvalues)
@@ -44,7 +44,7 @@ def percent_barplot(barvalues, outdir='.', title="Barplot", baseout="barplot"):
 
     # axis setup
     #labels = [ ('%s' % (b, v)) for (b, v) in barvalues ]
-    plt.xticks(ind + width / 2., ["%s\nreads: %d" % (b, v) for (b, v) in barvalues], size='xx-small', rotation=17)
+    plt.xticks(ind + width / 2., ["%s\n%s %d" % (b, vlab, v) for (b, v) in barvalues], size='xx-small', rotation=17)
     tick_range = np.arange(0, 110, 10)
     plt.yticks(tick_range, size='xx-small')
     formatter = plt.FixedFormatter([str(x) for x in tick_range])
@@ -67,26 +67,40 @@ def plot_n_save(a, x, y, xlab, ylab, outdir, baseout=False):
 
     savefig_multiple_ext(outdir + "/" + baseout)
 
-def barplot_read_lcas(a, taxa, title="Barplot read LCA", outdir='.', baseout="barplot_read_lca", read_level="amb", condition=True):
-    """Plot the number of times a taxon is the LCA of ambiguous reads for a
-    contig in a barplot. Expects taxa ordered from lowest rank to highest rank.
+def barplot_read_lcas(a, ranks, title="Barplot read LCA per contig", outdir='.', baseout="barplot_read_lca", read_level="amb", condition=True):
+    """Plot the number of times a rank is the LCA of ambiguous reads for a
+    contig in a barplot. Expects ranks ordered from lowest rank to highest rank.
     An extra condition over the contig purity numpy array 'a' can be specified
-    as an optional argument (e.g. a["max_aln_purity] < 0.95)."""
+    as an optional argument (e.g. a["max_aln_purity"] < 0.95)."""
     # Compute LCAs
     lcas = []
     has_nolca_yet = True
-    # Expect taxa ordered from lowest to highest
-    for t in taxa:
+    # Expect ranks ordered from lowest to highest
+    for r in ranks:
         # Taxa should contain all reads if it is LCA
-        has_allreads = (a[read_level + '_tot_nr_reads'] == a[read_level + '_nr_reads_' + t]) & ~a.mask[read_level + '_tot_nr_reads']
+        has_allreads = (a[read_level + '_tot_nr_reads'] == a[read_level + '_nr_reads_' + r]) & ~a.mask[read_level + '_tot_nr_reads']
         is_lca = condition & has_allreads & has_nolca_yet
-        lcas.append((t, np.count_nonzero(is_lca)))
+        lcas.append((r, np.count_nonzero(is_lca)))
 
         # Determine which contigs have no ambiguous read LCA yet
         has_nolca_yet = has_nolca_yet & ~is_lca
 
-    # Plot the times a taxon is LCA per taxon
-    percent_barplot(lcas, outdir=outdir, baseout=baseout, title=title)
+    # Plot the times a rank is LCA per contig
+    percent_barplot(lcas, outdir=outdir, baseout=baseout, title=title, vlab="contigs:")
+
+
+def barplot_read_lcas_per_read(a, ranks, title="Barplot read LCA per read", outdir='.', baseout="barplot_read_lca_per_read", read_level="amb", condition=True):
+    lcas = []
+
+    # Expect ranks ordered from lowest to highest
+    lower_rank_sum_reads = 0
+    for r in ranks:
+        num_reads_r = sum(a[~a.mask[read_level + '_tot_nr_reads'] & condition][read_level + '_nr_reads_' + r])
+        lcas.append((r, num_reads_r - lower_rank_sum_reads))
+        lower_rank_sum_reads = num_reads_r
+
+    # Plot the times a rank is LCA per read
+    percent_barplot(lcas, outdir=outdir, baseout=baseout, title=title, vlab="reads:")
 
 
 def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
@@ -119,36 +133,58 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
 
     is_chimer = a['max_aln_purity'] < 0.95
     is_no_chimer = a['max_aln_purity'] > 0.95
-    taxa_sub = ['strain','species','genus','class','phylum','superkingdom','life']
-    taxa_all = ["strain", "species", "genus", "family", "order", "class", "phylum",
+    ranks_sub = ['strain','species','genus','class','phylum','superkingdom','life']
+    ranks_all = ["strain", "species", "genus", "family", "order", "class", "phylum",
             "superphylum", "superkingdom", "life"]
-    # Ambiguous reads
-    barplot_read_lcas(a, taxa_sub, title="Ambiguous read LCA for contigs with"
+    # Ambiguous reads chimer
+#   barplot_read_lcas(a, ranks_sub, title="Ambiguous read LCA for contigs with"
+#           " max_aln_purity < 0.95", read_level="amb", condition=is_chimer,
+#           outdir=outdir,
+#           baseout="barplot_amb_read_lca_subset_ranks_max_aln_purity_lt_95")
+    barplot_read_lcas(a, ranks_all, title="Ambiguous read LCA for contigs with"
             " max_aln_purity < 0.95", read_level="amb", condition=is_chimer,
             outdir=outdir,
-            baseout="barplot_amb_read_lca_subset_taxa_max_aln_purity_95")
-    barplot_read_lcas(a, taxa_all, title="Ambiguous read LCA for contigs with"
-            " max_aln_purity < 0.95", read_level="amb", condition=is_chimer,
-            outdir=outdir,
-            baseout="barplot_amb_read_lca_all_taxa_max_aln_purity_95")
-    # Unambiguous reads
-    barplot_read_lcas(a, taxa_sub, title="Unambiguous read LCA for contigs with"
+            baseout="barplot_amb_read_lca_all_ranks_max_aln_purity_lt_95")
+    # Unambiguous reads chimer
+#   barplot_read_lcas(a, ranks_sub, title="Unambiguous read LCA for contigs with"
+#           " max_aln_purity < 0.95", read_level="unamb", condition=is_chimer,
+#           outdir=outdir,
+#           baseout="barplot_unamb_read_lca_subset_ranks_max_aln_purity_lt_95")
+    barplot_read_lcas(a, ranks_all, title="Unambiguous read LCA for contigs with"
             " max_aln_purity < 0.95", read_level="unamb", condition=is_chimer,
             outdir=outdir,
-            baseout="barplot_unamb_read_lca_subset_taxa_max_aln_purity_95")
-    barplot_read_lcas(a, taxa_all, title="Unambiguous read LCA for contigs with"
-            " max_aln_purity < 0.95", read_level="unamb", condition=is_chimer,
-            outdir=outdir,
-            baseout="barplot_unamb_read_lca_all_taxa_max_aln_purity_95")
-    # No chimers
-    barplot_read_lcas(a, taxa_all, title="Ambiguous read LCA for contigs with"
+            baseout="barplot_unamb_read_lca_all_ranks_max_aln_purity_lt_95")
+    # Amb No chimers
+    barplot_read_lcas(a, ranks_all, title="Ambiguous read LCA for contigs with"
             " max_aln_purity > 0.95", read_level="amb", condition=is_no_chimer,
             outdir=outdir,
-            baseout="barplot_amb_read_lca_all_taxa_max_aln_purity_gt_95")
-    barplot_read_lcas(a, taxa_all, title="Unambiguous read LCA for contigs with"
+            baseout="barplot_amb_read_lca_all_ranks_max_aln_purity_gt_95")
+    # Unamb no chimer
+    barplot_read_lcas(a, ranks_all, title="Unambiguous read LCA for contigs with"
             " max_aln_purity > 0.95", read_level="unamb", condition=is_no_chimer,
             outdir=outdir,
-            baseout="barplot_unamb_read_lca_all_taxa_max_aln_purity_gt_95")
+            baseout="barplot_unamb_read_lca_all_ranks_max_aln_purity_gt_95")
+
+    # Amb chimer
+    barplot_read_lcas_per_read(a, ranks_all, title="Ambiguous read LCA for contigs with"
+            " max_aln_purity < 0.95 per read", read_level="amb", condition=is_chimer,
+            outdir=outdir,
+            baseout="barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_lt_95")
+    # Amb nochimer
+    barplot_read_lcas_per_read(a, ranks_all, title="Ambiguous read LCA for contigs with"
+            " max_aln_purity > 0.95 per read", read_level="amb", condition=is_no_chimer,
+            outdir=outdir,
+            baseout="barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_gt_95")
+    # Unamb chimer
+    barplot_read_lcas_per_read(a, ranks_all, title="Unambiguous read LCA for contigs with"
+            " max_aln_purity < 0.95 per read", read_level="unamb", condition=is_chimer,
+            outdir=outdir,
+            baseout="barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_lt_95")
+    # Unamb no chimer
+    barplot_read_lcas_per_read(a, ranks_all, title="Unambiguous read LCA for contigs with"
+            " max_aln_purity > 0.95 per read", read_level="unamb", condition=is_no_chimer,
+            outdir=outdir,
+            baseout="barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_gt_95")
 
     # Output plots in HTML
     sdir = os.path.dirname(os.path.realpath(__file__))
@@ -165,12 +201,14 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
                                  plotcp3='plots/contig_length_vs_max_aln_purity.png',
                                  plotcp4='plots/unamb_read_level_purity_vs_max_aln_purity.png',
                                  plotcp5='plots/amb_read_level_purity_vs_max_aln_purity.png',
-                                 plotcp6='plots/barplot_amb_read_lca_all_taxa_max_aln_purity_95.png',
-                                 plotcp7='plots/barplot_amb_read_lca_subset_taxa_max_aln_purity_95.png',
-                                 plotcp8='plots/barplot_unamb_read_lca_all_taxa_max_aln_purity_95.png',
-                                 plotcp9='plots/barplot_unamb_read_lca_subset_taxa_max_aln_purity_95.png',
-                                 plotcp10='plots/barplot_amb_read_lca_all_taxa_max_aln_purity_gt_95.png',
-                                 plotcp11='plots/barplot_unamb_read_lca_all_taxa_max_aln_purity_gt_95.png'
+                                 plotcp6='plots/barplot_amb_read_lca_all_ranks_max_aln_purity_lt_95.png',
+                                 plotcp7='plots/barplot_unamb_read_lca_all_ranks_max_aln_purity_lt_95.png',
+                                 plotcp8='plots/barplot_amb_read_lca_all_ranks_max_aln_purity_gt_95.png',
+                                 plotcp9='plots/barplot_unamb_read_lca_all_ranks_max_aln_purity_gt_95.png',
+                                 plotcp10='plots/barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_lt_95.png',
+                                 plotcp11='plots/barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_gt_95.png',
+                                 plotcp12='plots/barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_lt_95.png',
+                                 plotcp13='plots/barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_gt_95.png'
                                  ))
 
 
