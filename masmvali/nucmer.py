@@ -1,12 +1,19 @@
 import sqlite3
+import os
+
 
 class Coords:
     def __init__(self, coordsfile):
         self.coordsfile = coordsfile
         self.cursor = get_coords_db_cursor(coordsfile)
 
-    def calc_genome_contig_cov_in_bases(self, cut_off=100):
-        return(calc_genome_contig_cov_in_bases(self.cursor, cut_off))
+    def calc_genome_contig_cov_in_bases(self, refs, cut_off=100):
+        gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off)
+        for k in refs:
+            try:
+                refs[k].contig_cov = gccov[k]
+            except KeyError:
+                pass
 
     def calc_max_aln_purity_per_contig(self, contigs=None, cut_off=100):
         return(calc_max_aln_purity_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
@@ -18,14 +25,12 @@ class Coords:
 def get_coords_db_cursor(coordsfile):
     # Create db
     #dbc = sqlite3.connect(':memory:')
-    dbc = sqlite3.connect(coordsfile + ".sqlite")
-    try:
+    if not os.path.isfile(coordsfile + ".sqlite"):
+        dbc = sqlite3.connect(coordsfile + ".sqlite")
         dbc.execute("""Create table Coords (ID INTEGER PRIMARY KEY, S1 INTEGER, E1
                     INTEGER, S2 INTEGER, E2 INTEGER, LEN1 INTEGER, LEN2 INTEGER,
                     IDY REAL, LENR INTEGER, LENQ INTEGER, COVR REAL, COVQ REAL,
                     REFID TEXT, QRYID TEXT)""")
-        dbc.row_factory = sqlite3.Row
-
         # Parse file and add to db
         columns = ('S1', 'E1', 'S2', 'E2', 'LEN1', 'LEN2', 'IDY', 'LENR',
                    'LENQ', 'COVR', 'COVQ', 'REFID', 'QRYID')
@@ -35,12 +40,15 @@ def get_coords_db_cursor(coordsfile):
             dbc.execute("""Insert into Coords values(NULL, :S1, :E1, :S2, :E2,
                         :LEN1, :LEN2, :IDY, :LENR, :LENQ, :COVR, :COVQ, :REFID,
                         :QRYID)""", parsed_line)
-    except:
-        dbc.row_factory = sqlite3.Row
-        pass
-    dbc.commit()
+        dbc.execute("""CREATE INDEX QRYID_idx ON Coords (QRYID)""")
+        dbc.commit()
+    else:
+        dbc = sqlite3.connect(coordsfile + ".sqlite")
+
+    dbc.row_factory = sqlite3.Row
 
     return dbc.cursor()
+
 
 def calc_genome_contig_cov_in_bases(cursor, cut_off=100):
     """Genome contig coverage is a metric that indicates how well the genome is
@@ -61,10 +69,14 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100):
     """
     refcov = {}  # nr of bases covered by contigs aligned with max purity
     prev_e1 = 0
-    for row in cursor.execute("""SELECT * FROM (SELECT *, max(COVQ * IDY /
-                              10000) AS purity FROM Coords GROUP BY QRYID)
-                              WHERE COVQ * IDY / 10000 == purity AND LENQ >= :cut_off ORDER BY
-                              REFID, S1 ASC""", dict(cut_off=cut_off)):
+    query = """SELECT *, COVQ*IDY/10000 AS purity FROM Coords
+            INNER JOIN (
+                SELECT QRYID AS max_qryid, max(COVQ*IDY/10000) AS max_purity FROM
+                Coords GROUP BY QRYID
+            ) ON QRYID==max_qryid
+            WHERE LENQ >= :cut_off AND purity==max_purity
+            ORDER BY REFID, S1 ASC"""
+    for row in cursor.execute(query, dict(cut_off=cut_off)):
         if row["REFID"] in refcov:
             if prev_e1 >= row["E1"]:
                 continue
@@ -83,10 +95,12 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100):
 
 
 def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100):
-    query = """SELECT * FROM (SELECT *, max(COVQ * IDY / 10000) AS purity FROM
-            Coords GROUP BY QRYID) WHERE COVQ * IDY / 10000 == purity AND LENQ
-            >= :cut_off"""
-
+    query = """SELECT *, COVQ*IDY/10000 AS purity FROM Coords
+            INNER JOIN (
+                SELECT QRYID AS max_qryid, max(COVQ*IDY/10000) AS max_purity FROM
+                Coords GROUP BY QRYID
+            ) ON QRYID==max_qryid
+            WHERE LENQ >= :cut_off AND purity==max_purity"""
     if contigs is None:
         q_max_aln_purity = {}
         for row in cursor.execute(query, dict(cut_off=cut_off)):
@@ -99,6 +113,8 @@ def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100):
             # by parsing the fasta file
             # TODO: assertion fails because nucmer includes Ns
             #assert(contigs[row["QRYID"]].length == row["LENQ"])
+            #if row["QRYID"] == "NODE_100004_length_263_cov_29.798479":
+            #    import ipdb; print ipdb.set_trace()
 
             q_max_aln_purity[row["QRYID"]].max_aln_purity = row["purity"]
             q_max_aln_purity[row["QRYID"]].max_aln_strain = row["REFID"]
@@ -107,7 +123,7 @@ def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100):
 
 
 def calc_alignedbases_per_contig(cursor, contigs=None, cut_off=100):
-    query = """SELECT *, min(S2, E2) AS start, max(S2, E2) as end FROM COORDS
+    query = """SELECT *, min(S2, E2) AS start, max(S2, E2) as end FROM Coords
             WHERE LENQ >= :cut_off ORDER BY QRYID, start ASC"""
 
     if contigs is None:
@@ -116,7 +132,7 @@ def calc_alignedbases_per_contig(cursor, contigs=None, cut_off=100):
         for row in cursor.execute(query, dict(cut_off=cut_off)):
 
             if not row["QRYID"] in q_aln_bases:
-                q_aln_bases[row["QRYID"]] = row["end"] - row["start"]
+                q_aln_bases[row["QRYID"]] = row["end"] - row["start"] + 1
             else:
                 if prev_end >= row["end"]:
                     continue
@@ -133,7 +149,7 @@ def calc_alignedbases_per_contig(cursor, contigs=None, cut_off=100):
         prev_end = 0
         for row in cursor.execute(query, dict(cut_off=cut_off)):
             if not hasattr(contigs[row["QRYID"]], "aln_bases"):
-                contigs[row["QRYID"]].aln_bases = row["end"] - row["start"]
+                contigs[row["QRYID"]].aln_bases = row["end"] - row["start"] + 1
             else:
                 if prev_end >= row["end"]:
                     continue

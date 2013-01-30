@@ -3,21 +3,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import os
-import errno
-from collections import defaultdict
+from utils import make_dir
 
 
 MISSING_VALUE = "N/A"
 DELIMITER = "\t"
 
-
-def make_dir(directory):
-    """Make directory unless existing. Ignore error in the latter case."""
-    try:
-        os.makedirs(directory)
-    except OSError as exception:
-        if exception.errno != errno.EEXIST:
-            raise
 
 def savefig_multiple_ext(baseout):
     """Save figure with multiple extensions and close afterwards."""
@@ -25,6 +16,7 @@ def savefig_multiple_ext(baseout):
     plt.savefig(baseout + ".svg")
     plt.savefig(baseout + ".png")
     plt.close()
+
 
 def percent_barplot(barvalues, outdir='.', title="Barplot", baseout="barplot", vlab='#'):
     """Plot a list of tuples [(barname, value), ...]" in a barplot. All values
@@ -36,14 +28,16 @@ def percent_barplot(barvalues, outdir='.', title="Barplot", baseout="barplot", v
 
     # add bars
     sum_values = sum(v for (b, v) in barvalues)
-    plt.bar(ind, [v * 100 / sum_values for (b, v) in barvalues], width, color='red')
+    if sum_values > 0:
+        plt.bar(ind, [v * 100 / sum_values for (b, v) in barvalues], width, color='red')
+    else:
+        plt.bar(ind, [v for (b, v) in barvalues], width, color='red')
     # Final bar is not really visible, increase xlim
     xmin, xmax = plt.xlim()
-    plt.xlim(xmin=xmin-1)
-    plt.xlim(xmax=xmax+1)
+    plt.xlim(xmin=xmin - 1)
+    plt.xlim(xmax=xmax + 1)
 
     # axis setup
-    #labels = [ ('%s' % (b, v)) for (b, v) in barvalues ]
     plt.xticks(ind + width / 2., ["%s\n%s %d" % (b, vlab, v) for (b, v) in barvalues], size='xx-small', rotation=17)
     tick_range = np.arange(0, 110, 10)
     plt.yticks(tick_range, size='xx-small')
@@ -66,6 +60,7 @@ def plot_n_save(a, x, y, xlab, ylab, outdir, baseout=False):
         baseout = "{x}_vs_{y}".format(x=x, y=y)
 
     savefig_multiple_ext(outdir + "/" + baseout)
+
 
 def barplot_read_lcas(a, ranks, title="Barplot read LCA per contig", outdir='.', baseout="barplot_read_lca", read_level="amb", condition=True):
     """Plot the number of times a rank is the LCA of ambiguous reads for a
@@ -107,14 +102,14 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
     # Make plots genome contig coverage
     outdir = masmdir + "/plots"
     make_dir(outdir)
-   #a = np.genfromtxt(
-   #    genome_contig_cov_tsv, names=True, dtype=None, missing_values=MISSING_VALUE, usemask=True)
-   #make_dir(outdir)
-   #plot_n_save(a, "GC_content", "read_cov_ratio", "GC_content of genome", "Read coverage of genome", outdir)
-   #plot_n_save(a, "GC_content", "genome_contig_cov_ratio", "GC_content of \
-   #        genome", "Contig coverage ratio of genome", outdir)
-   #plot_n_save(a, "read_cov_ratio", "genome_contig_cov_ratio", "Read coverage \
-   #        ratio of genome", "Read coverage of genome", outdir)
+    a = np.genfromtxt(genome_contig_cov_tsv, names=True, dtype=None,
+        missing_values=MISSING_VALUE, usemask=True, delimiter=DELIMITER)
+    make_dir(outdir)
+    plot_n_save(a, "GC_content", "read_cov_ratio", "GC_content of genome", "Read coverage of genome", outdir)
+    plot_n_save(a, "GC_content", "genome_contig_cov_ratio", "GC_content of"
+            " genome", "Contig coverage ratio of genome", outdir)
+    plot_n_save(a, "read_cov_ratio", "genome_contig_cov_ratio", "Read coverage"
+            " ratio of genome", "Contig coverage ratio of genome", outdir)
 
     # Make plots contig purity
     a = np.genfromtxt(contig_purity_tsv, names=True, delimiter=DELIMITER,
@@ -133,7 +128,7 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
 
     is_chimer = a['max_aln_purity'] < 0.95
     is_no_chimer = a['max_aln_purity'] > 0.95
-    ranks_sub = ['strain','species','genus','class','phylum','superkingdom','life']
+    #ranks_sub = ['strain','species','genus','class','phylum','superkingdom','life']
     ranks_all = ["strain", "species", "genus", "family", "order", "class", "phylum",
             "superphylum", "superkingdom", "life"]
     # Ambiguous reads chimer
@@ -201,14 +196,14 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
                                  plotcp3='plots/contig_length_vs_max_aln_purity.png',
                                  plotcp4='plots/unamb_read_level_purity_vs_max_aln_purity.png',
                                  plotcp5='plots/amb_read_level_purity_vs_max_aln_purity.png',
-                                 plotcp6='plots/barplot_amb_read_lca_all_ranks_max_aln_purity_lt_95.png',
-                                 plotcp7='plots/barplot_unamb_read_lca_all_ranks_max_aln_purity_lt_95.png',
-                                 plotcp8='plots/barplot_amb_read_lca_all_ranks_max_aln_purity_gt_95.png',
-                                 plotcp9='plots/barplot_unamb_read_lca_all_ranks_max_aln_purity_gt_95.png',
-                                 plotcp10='plots/barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_lt_95.png',
-                                 plotcp11='plots/barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_gt_95.png',
-                                 plotcp12='plots/barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_lt_95.png',
-                                 plotcp13='plots/barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_gt_95.png'
+                                 plotlcaamb1='plots/barplot_amb_read_lca_all_ranks_max_aln_purity_lt_95.png',
+                                 plotlcaamb2='plots/barplot_amb_read_lca_all_ranks_max_aln_purity_gt_95.png',
+                                 plotlcaamb3='plots/barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_lt_95.png',
+                                 plotlcaamb4='plots/barplot_amb_read_lca_per_read_all_ranks_max_aln_purity_gt_95.png',
+                                 plotlcaunamb1='plots/barplot_unamb_read_lca_all_ranks_max_aln_purity_lt_95.png',
+                                 plotlcaunamb2='plots/barplot_unamb_read_lca_all_ranks_max_aln_purity_gt_95.png',
+                                 plotlcaunamb3='plots/barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_lt_95.png',
+                                 plotlcaunamb4='plots/barplot_unamb_read_lca_per_read_all_ranks_max_aln_purity_gt_95.png',
                                  ))
 
 

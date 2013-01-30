@@ -1,5 +1,6 @@
-from assembly import get_read_contig_mappings, AssemblyValidation
-from refgenome import ReferenceSet
+from masmvali.assembly import get_read_contig_mappings
+from masmvali.refgenome import ReferenceSet
+from masmvali.validation import AssemblyValidation
 from utils import get_shell_output, get_testfile, make_dir, get_outdir
 
 
@@ -26,10 +27,9 @@ def test_assemblyvalidation():
     assert(len(val.contigs) == int(get_shell_output("grep -c '^>' " + contigfa)[0]))
 
     make_dir(get_outdir() + "masm")
-    with open(get_outdir() + "masm" + "/contig-purity.tsv", "w") as fh:
-        fh.write(val.contigs.itervalues().next().str_stats_header() + "\n")
-        for c in val.contigs.itervalues():
-            fh.write(c.str_stats() + "\n")
+    val.write_contig_purity(get_outdir() + "masm" + "/contig-purity.tsv")
+    val.write_general_stats(get_outdir() + "masm" + "/asm-stats.tsv")
+    val.write_genome_contig_cov(get_outdir() + "masm" + "/genome-contig-coverage.tsv")
 
 
 def main():

@@ -1,10 +1,9 @@
 from collections import namedtuple, Counter, defaultdict, MutableMapping
 import re
 
-import nucmer
 import pysam
 
-from refgenome import EqualNameImpliesEquality, ReferenceSet, Reference
+from refgenome import EqualNameImpliesEquality, Reference
 
 
 class Read(EqualNameImpliesEquality):
@@ -65,6 +64,7 @@ class ReadDict():
             return(self.unamb_stats)
 
     def get_amb_stats(self):
+        # TODO: fix this weird lazy recomputing stuff to a better solution
         if self.amb_stats is not None:
             return(self.amb_stats)
         else:
@@ -162,7 +162,11 @@ class ReadDict():
         if amb_stats is not None:
             for s in amb_stats:
                 rv += sep + str(s)
-            rv += sep + str(len(self.amb_reads))
+            # TODO: This is a bit weird because the outputted ambiguous reads
+            # are the ambiguous reads incl unambiguous reads whereas internal
+            # they are called amb_reads and unamb_reads. Should reconsider this
+            # design.
+            rv += sep + str(max(len(self.amb_reads), len(self.unamb_reads)))
 
             amb_taxon_counts = self.get_amb_nr_reads_per_taxon()
             for t in Reference.TAX_LVLS:
@@ -224,25 +228,15 @@ class ContigDict(MutableMapping):
 
     def parse_fasta_lengths(self, fafile, cut_off=100):
         self.l50, self.n50, self.totbases, self.max_length, self.trim_n, fa_contig_lengths = asm_stats_fasta(fafile, cut_off)
-        for fac in fa_contig_lengths:
+        for factot in fa_contig_lengths:
+            #TODO: temp fix with splitting factot because nucmer doesnt store entire contig name, bam prolly neither
+            fac = factot.split()[0]
             try:
                 c = self.contigs[fac]
             except KeyError:
                 c = Contig(fac)
                 self.contigs[fac] = c
-            c.length = fa_contig_lengths[fac]
-
-
-class AssemblyValidation():
-    def __init__(self, bamref, bamasm, refphylfile, refstatsfile, asmfa, nucmercoords, cut_off=100):
-        self.bamref = bamref
-        self.bamasm = bamasm
-        self.asmfa = asmfa
-        self.cut_off = 100
-        self.refs = ReferenceSet(refphylfile, refstatsfile)
-        self.reads, self.contigs = get_read_contig_mappings(bamref, bamasm, self.refs, asmfa, cut_off)
-        self.coords = nucmer.Coords(nucmercoords)
-        self.coords.calc_max_aln_purity_per_contig(self.contigs, self.cut_off)
+            c.length = fa_contig_lengths[factot]
 
 
 def get_read_contig_mappings(bamref, bamasm, refs, asmfa, cut_off=100):
@@ -250,7 +244,7 @@ def get_read_contig_mappings(bamref, bamasm, refs, asmfa, cut_off=100):
     reads mapped against the assembly and returns a dictionary of reads indexed
     by name and contigs indexed by name.
 
-    bamref -- bamfile of reads mapped to refernce
+    bamref -- bamfile of reads mapped to reference
     bamasm -- bamfile of the same reads mapped to contigs/scaffolds of an
               assembly
     refs   -- A ReferenceSet
@@ -272,7 +266,8 @@ def get_read_contig_mappings(bamref, bamasm, refs, asmfa, cut_off=100):
     asmfile = pysam.Samfile(bamasm, "rb")
     for record in asmfile:
         if record.mapq > 0 and record.qlen >= cut_off:
-            # All contigs should be in asmfa, so no need to use try/except
+            # All contigs should be in asmfa
+            # TODO: use try/except return sensible error msg
             c = contigs.get(asmfile.getrname(record.tid))
             try:
                 r = reads[record.qname]
@@ -287,7 +282,6 @@ def get_read_contig_mappings(bamref, bamasm, refs, asmfa, cut_off=100):
 
 def asm_stats_fasta(fafile, cut_off=100):
     """Return L50 of an assembly and the total number of bases. 50% of all
-    import ipdb; ipdb.set_trace()
     bases in the assembly are located in contigs equal or larger than l50."""
     name = None
     all_contig_lengths = {}
@@ -312,7 +306,7 @@ def asm_stats_fasta(fafile, cut_off=100):
         cumsum += sorted_contigs[i]
         if cumsum >= totbases / 2:
             l50 = sorted_contigs[i]
-            n50 = i
+            n50 = i + 1
             break
 
     return(l50, n50, totbases, max_length, len(sorted_contigs), all_contig_lengths)

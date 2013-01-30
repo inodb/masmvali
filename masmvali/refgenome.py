@@ -80,10 +80,10 @@ class ReferenceSet():
                 r = Reference(phylogeny)
 
                 # Reference length/GC/ratio covered
-                r.length = reflens[fn]["length"]
-                r.ratio_covered = reflens[fn]["ratio_covered"]
-                r.cov = reflens[fn]["cov"]
-                r.gc_content = reflens[fn]["GC_content"]
+                r.length = int(reflens[fn]["length"])
+                r.ratio_covered = float(reflens[fn]["ratio_covered"])
+                r.cov = float(reflens[fn]["cov"])
+                r.gc_content = float(reflens[fn]["GC_content"])
 
                 # refs indexable by genome id, fasta name and reference name
                 self.refs[refrec["fasta_name"]] = r
