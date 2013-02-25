@@ -2,7 +2,7 @@ from refgenome import ReferenceSet
 import nucmer
 import assembly
 import argparse
-from utils import print_dict2tsv, make_dir
+from utils import print_dict2tsv
 
 
 class AssemblyValidation():
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         "--bamasm", default=None, help="BAM file of the reads mapped against the contigs\n")
     args = parser.parse_args()
 
-    if args.bamref or args.bamasm and not (args.bamref and args.bamasm):
+    if (args.bamref or args.bamasm) and not (args.bamref and args.bamasm):
         raise(Exception("Both --bamref and --bamasm required if read purity"
                         " computation is wanted"))
 
@@ -105,9 +105,6 @@ if __name__ == "__main__":
     args.coords, args.bamref, args.bamasm)
 
     # Print output
-    masmdir = args
-    make_dir(args.masmdir)
-
     masmdir = args.masmdir.rstrip('/')
     val.write_general_stats(masmdir + "/asm-stats.tsv")
     val.write_genome_contig_cov(masmdir + "/genome-contig-coverage.tsv")
