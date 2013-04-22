@@ -7,7 +7,7 @@ import assembly
 from plot import savefig_multiple_ext
 
 
-def main(outputbase, assemblies, names, colors, shapes):
+def main(outputbase, assemblies, names, colors, shapes, cut_off=100):
     for i, asm in enumerate(assemblies):
         contigs = assembly.ContigDict()
         contigs.parse_fasta_lengths(asm)
@@ -15,7 +15,7 @@ def main(outputbase, assemblies, names, colors, shapes):
         contiglens.sort()
         contiglens.reverse()
         cla = np.array(contiglens)
-        plt.plot(cla, np.cumsum(cla), shapes[i], color=colors[i], label=names[i])
+        plt.plot(cla[cla > cut_off], np.cumsum(cla[cla > cut_off]), shapes[i], color=colors[i], label=names[i])
     plt.gca().invert_xaxis()
 
     savefig_multiple_ext(outputbase)

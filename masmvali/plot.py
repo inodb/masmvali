@@ -105,11 +105,14 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
     a = np.genfromtxt(genome_contig_cov_tsv, names=True, dtype=None,
         missing_values=MISSING_VALUE, usemask=True, delimiter=DELIMITER)
     make_dir(outdir)
-    plot_n_save(a, "GC_content", "read_cov_ratio", "GC_content of genome", "Read coverage of genome", outdir)
+    plot_n_save(a, "GC_content", "read_cov_ratio", "GC_content of genome", "Read coverage ratio of genome", outdir)
+    plot_n_save(a, "GC_content", "read_cov_mean", "GC_content of genome", "Read fold mean coverage of genome", outdir)
     plot_n_save(a, "GC_content", "genome_contig_cov_ratio", "GC_content of"
             " genome", "Contig coverage ratio of genome", outdir)
     plot_n_save(a, "read_cov_ratio", "genome_contig_cov_ratio", "Read coverage"
             " ratio of genome", "Contig coverage ratio of genome", outdir)
+    plot_n_save(a, "read_cov_mean", "genome_contig_cov_ratio", "Read fold mean coverage"
+            " of genome", "Contig coverage ratio of genome", outdir)
 
     # Make plots contig purity
     a = np.genfromtxt(contig_purity_tsv, names=True, delimiter=DELIMITER,
@@ -189,8 +192,10 @@ def main(genome_contig_cov_tsv, contig_purity_tsv, masmdir):
                                  gcctsv='genome-contig-coverage.tsv',
                                  cptsv='contig-purity.tsv',
                                  plotgc1='plots/GC_content_vs_read_cov_ratio.png',
-                                 plotgc2='plots/GC_content_vs_genome_contig_cov_ratio.png',
-                                 plotgc3='plots/read_cov_ratio_vs_genome_contig_cov_ratio.png',
+                                 plotgc2='plots/GC_content_vs_read_cov_mean.png',
+                                 plotgc3='plots/GC_content_vs_genome_contig_cov_ratio.png',
+                                 plotgc4='plots/read_cov_ratio_vs_genome_contig_cov_ratio.png',
+                                 plotgc5='plots/read_cov_mean_vs_genome_contig_cov_ratio.png',
                                  plotcp1='plots/contig_length_vs_unamb_read_level_purity.png',
                                  plotcp2='plots/contig_length_vs_amb_read_level_purity.png',
                                  plotcp3='plots/contig_length_vs_max_aln_purity.png',

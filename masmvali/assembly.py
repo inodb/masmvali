@@ -189,14 +189,15 @@ class Contig(EqualNameImpliesEquality):
             self.reads.add(read)
 
     def str_stats_header(self, sep="\t"):
-        return(sep.join(["contig", "contig_length", "max_aln_strain", "max_aln_purity"] + ReadDict.get_stats_header()))
+        return(sep.join(["contig", "contig_length", "max_aln_strain", "max_aln_purity", "cov_mean"] + ReadDict.get_stats_header()))
 
     def str_stats(self, sep="\t", missing_value="N/A"):
         rv = ""
 
         rv += sep.join([self.name, str(self.length),
             str(getattr(self, "max_aln_strain", missing_value)),
-            str(getattr(self, "max_aln_purity", missing_value))])
+            str(getattr(self, "max_aln_purity", missing_value)),
+            str(getattr(self, "cov_mean", missing_value))])
         rv += sep
         if hasattr(self, "reads"):
             rv += self.reads.str_stats(missing_value=missing_value)
@@ -237,6 +238,26 @@ class ContigDict(MutableMapping):
                 c = Contig(fac)
                 self.contigs[fac] = c
             c.length = fa_contig_lengths[factot]
+
+    def parse_cov_bed(self, covbedasm):
+        """Take the default coverageBed output and store coverage mean for each contig in self."""
+        cov_means = defaultdict(int)
+        # Parse the coverageBed output file, 0 name, 1 cov, 2 nr of bases with
+        # that cov, 3 total nr of bases in contig, 4 ratio of total bases in
+        # contig
+        for line in open(covbedasm):
+            cols = line.split()
+            cov_means[cols[0]] = cov_means[cols[0]] + int(cols[1]) * float(cols[4])
+
+        # Copy to self
+        for cm in cov_means:
+            try:
+                self.contigs[cm].cov_mean = cov_means[cm]
+            except KeyError:
+                if cm == "genome":
+                    self.cov_mean = cov_means["genome"]
+                else:
+                    raise(Exception("Contig %s doesn't exist. ContigDict can only add new contigs through parse_fasta_lengths()" % cols[0]))
 
 
 def get_read_contig_mappings(bamref, bamasm, refs, asmfa, cut_off=100):
