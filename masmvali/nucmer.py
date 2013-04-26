@@ -8,19 +8,37 @@ class Coords:
         self.cursor = get_coords_db_cursor(coordsfile)
 
     def calc_genome_contig_cov_in_bases(self, refs, cut_off=100, count_contig_once=False):
+        # set coverage to 0 for all existing references
+        for r in set(refs.values()):
+            r.contig_cov = 0
+
+        # calcualte the coverage per reference
         gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once)
+
+        # copy over the results to reference set structure
         for k in gccov:
             refs[k].contig_cov = gccov[k]
 
         # Calculate global stats
         self.ref_sum_bases = sum(r.length for r in set(refs.values()))
-        self.ref_sum_cov = sum([r.contig_cov for r in set(refs.values())])
+        self.ref_sum_cov = sum(r.contig_cov for r in set(refs.values()))
 
     def calc_max_aln_purity_per_contig(self, contigs=None, cut_off=100):
         return(calc_max_aln_purity_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
 
-    def calc_alignedbases_per_contig(self, contigs=None, cut_off=100):
-        return(calc_alignedbases_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
+    def calc_alignedbases_per_contig(self, contigs, cut_off=100):
+        calc_alignedbases_per_contig(self.cursor, contigs=contigs, cut_off=cut_off)
+        self.sum_purest_bases = sum(
+            getattr(c, "max_aln_purity", 0) * c.length for c in
+            contigs.itervalues())
+        self.sum_aln_bases = sum(
+            getattr(c, "aln_bases", 0) for c in contigs.itervalues())
+
+        # Alignment purity, how pure are all the alignments
+        self.aln_pur = float(self.sum_purest_bases) / self.sum_aln_bases
+        # Global purity
+        self.glob_pur = float(self.sum_purest_bases) / contigs.totbases
+        self.aln_ratio = float(self.sum_aln_bases) / contigs.totbases
 
 
 def get_coords_db_cursor(coordsfile):
