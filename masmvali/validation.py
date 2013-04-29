@@ -48,22 +48,22 @@ class AssemblyValidation():
 
     def write_general_stats(self, filename, sep="\t"):
         if not hasattr(self.coords, "q_aln_bases"):
-            self.coords.calc_alignedbases_per_contig()
+            self.coords.calc_alignedbases_per_contig(self.contigs)
 
         # Get all reference lengths
         if not hasattr(self.coords, "ref_sum_bases"):
             self.coords.calc_genome_contig_cov_in_bases(self.refs.refs)
 
         # Print assembly stats
-        print_dict2tsv(d=dict(name=self.missing_value, global_purity=self.glob_pur,
-                            aln_purity=self.aln_pur, aln_ratio=self.aln_ratio,
+        print_dict2tsv(d=dict(name=self.missing_value, global_purity=self.coords.glob_pur,
+                            aln_purity=self.coords.aln_pur, aln_ratio=self.coords.aln_ratio,
                             l50=self.contigs.l50,
                             n50=self.contigs.n50, trim_n=self.contigs.trim_n,
                             max_contig_length=self.contigs.max_length,
                             cut_off=self.cut_off,
                             trim_n_mapping=sum([hasattr(c, "aln_bases") for c in self.contigs.itervalues()]),
                             sum_ref_lengths=self.coords.ref_sum_bases,
-                            sum_purest_bases=self.sum_purest_bases,
+                            sum_purest_bases=self.coords.sum_purest_bases,
                             metagenome_cov=float(self.coords.ref_sum_cov) / self.coords.ref_sum_bases,
                             sum_bases=self.contigs.totbases, asm_type=self.missing_value,
                             kmer_type=self.missing_value, kmer_size=self.missing_value,
@@ -102,8 +102,8 @@ if __name__ == "__main__":
                         " computation is wanted"))
 
     # Calculate stats
-    val = AssemblyValidation(args.contigs, args.coords, refphyl=args.refphyl,
-        refstats=args.refstats, bamref=args.bamref, bamasm=args.bamasm,
+    val = AssemblyValidation(args.contigs, args.coords, refphylfile=args.refphyl,
+        refstatsfile=args.refstats, bamref=args.bamref, bamasm=args.bamasm,
         covbedasm=args.covbedasm)
 
     # Print output
