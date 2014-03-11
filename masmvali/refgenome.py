@@ -1,4 +1,5 @@
 import numpy as np
+from utils import readtable
 
 
 class EqualNameImpliesEquality:
@@ -60,7 +61,7 @@ class Reference(EqualNameImpliesEquality):
 
 class ReferenceSet():
     """A set of references"""
-    def __init__(self, refphylfile, refstatsfile, missing_value="N/A"):
+    def __init__(self, refphylfile, refstatsfile, missing_value="N/A", contigs_to_refs_dict=None):
         # Get reference length/GC info
         reflens = readtable(refstatsfile, sep="\t")
 
@@ -73,6 +74,8 @@ class ReferenceSet():
         self.refs = {}
         for refrec in rp:
             # Only use references that actually have fasta sequences
+            # TODO: Should be possible to have multiple contigs for one
+            # refernce instead like with contigs_to_refs_dict
             fn = refrec["fasta_name"]
             if fn != missing_value:
                 # Phylogeny info
@@ -80,42 +83,50 @@ class ReferenceSet():
                 r = Reference(phylogeny)
 
                 # Reference length/GC/ratio covered
-                r.length = int(reflens[fn]["length"])
-                r.ratio_covered = float(reflens[fn]["ratio_covered"])
-                r.cov = float(reflens[fn]["cov"])
-                r.gc_content = float(reflens[fn]["GC_content"])
+                if contigs_to_refs_dict is None:
+                    r.length = int(reflens[fn]["length"])
+                    r.ratio_covered = float(reflens[fn]["ratio_covered"])
+                    r.cov = float(reflens[fn]["cov"])
+                    r.gc_content = float(reflens[fn]["GC_content"])
+                else:
+                    #TODO: The whole contigs_to_refs_dict should be the default
+                    # Then there should just be one entry for each contig in
+                    # the contigs_to_refs_table
+                    r.length = 0
+                    r.ratio_covered = 0
+                    r.cov = 0
+                    r.gc_content = 0
+                    for c in contigs_to_refs_dict:
+                        if contigs_to_refs_dict[c] == refrec["topname"]:
+                            contig_length = int(reflens[c]["length"])
+                            r.length += contig_length
+                            #print c, reflens[c]
+                            #TODO: the refstats stuff should be changed to
+                            # actually take a reference fasta and a bam file,
+                            # there's an error for ratio_covered as well if
+                            # there are no bases with 0 coverage
+                            r.ratio_covered += float(reflens[c].get("ratio_covered",1)) * contig_length
+                            r.cov += float(reflens[c]["cov"]) * contig_length
+                            r.gc_content += float(reflens[c]["GC_content"]) * contig_length
+                    if r.length == 0:
+                        raise(Exception("No contigs found for %s in contigs_to_refs_dict" % refrec["topname"]))
+                    # Divide by sum of contig lengths belonging to reference
+                    r.ratio_covered = r.ratio_covered / r.length
+                    r.cov = r.cov / r.length
+                    r.gc_content = r.cov / r.length
 
                 # refs indexable by genome id, fasta name and reference name
                 self.refs[refrec["fasta_name"]] = r
                 self.refs[refrec["gen_id"]] = r
                 self.refs[r.name] = r
 
+        self.mg_length = sum([r.length for r in self])
+
     def get(self, name):
         return self.refs[name]
 
     def __len__(self):
-        return len(set(self.refs.values()))
+        return len(set(self.refs.itervalues()))
 
-
-def readtable(tablefile, sep=None):
-    """Reads given table separated 'sep'.
-
-    Returns a two-dimensional dictionary. Outer dictionary uses first column in
-    'tablefile' as key, inner dictionary uses column names found in the first
-    line as column names. The number of column names should be equal to number
-    of columns - 1."""
-    table2d = {}
-
-    # Get column names
-    tfh = open(tablefile, "r")
-    line = tfh.readline()
-    cols = line.strip().split(sep)
-
-    # Insert rows
-    for line in tfh:
-        splits = line.strip().split(sep)
-        table2d[splits[0]] = {}
-        for i in range(1, len(splits)):
-            table2d[splits[0]][cols[i - 1]] = splits[i]
-
-    return(table2d)
+    def __iter__(self):
+        return iter(set(self.refs.itervalues()))

@@ -7,21 +7,27 @@ class Coords:
         self.coordsfile = coordsfile
         self.cursor = get_coords_db_cursor(coordsfile)
 
-    def calc_genome_contig_cov_in_bases(self, refs, cut_off=100, count_contig_once=False):
+    def calc_genome_contig_cov_in_bases(self, refs, cut_off=100,
+            count_contig_once=False, contigs_to_refs_dict=None):
         # set coverage to 0 for all existing references
-        for r in set(refs.values()):
+        for r in refs:
             r.contig_cov = 0
 
         # calcualte the coverage per reference
         gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once)
 
         # copy over the results to reference set structure
-        for k in gccov:
-            refs[k].contig_cov = gccov[k]
+        # TODO: contigs_to_refs_dict should be the default
+        if contigs_to_refs_dict:
+            for k in gccov:
+                refs.get(contigs_to_refs_dict[k]).contig_cov += gccov[k]
+        else:
+            for k in gccov:
+                refs.get(k).contig_cov = gccov[k]
 
         # Calculate global stats
-        self.ref_sum_bases = sum(r.length for r in set(refs.values()))
-        self.ref_sum_cov = sum(r.contig_cov for r in set(refs.values()))
+        self.ref_sum_bases = sum(r.length for r in refs)
+        self.ref_sum_cov = sum(r.contig_cov for r in refs)
 
     def calc_max_aln_purity_per_contig(self, contigs=None, cut_off=100):
         return(calc_max_aln_purity_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
@@ -82,7 +88,7 @@ def non_overlapping_sum(start, end, prev_end, idy=1.0):
         return [int((end - start + 1) * idy), end]
 
 
-def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=False):
+def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True):
     """Genome contig coverage is a metric that indicates how well the genome is
     covered by contigs. For each contig only the purest alignment is
     considered.  Purity is defined as COVQ * IDY / 10,000. If there are muliple
