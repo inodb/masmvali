@@ -40,6 +40,8 @@ def plot_length_cum(assemblies, names, colors, shapes, linewidths, cut_off=100):
         cla = np.array(contiglens)
         plt.plot(cla[cla > cut_off], np.cumsum(cla[cla > cut_off]), shapes[i], color=colors[i], label=names[i], linewidth=linewidths[i])
     plt.gca().invert_xaxis()
+    plt.xlabel('Contig length cut-off from largest to shortest')
+    plt.ylabel('Sum of bases')
 
 
 def main(outputbase, assemblies, names, colors, shapes, linewidths, cut_off=100, roc=False):
@@ -75,6 +77,8 @@ if __name__ == "__main__":
                                help='Plot names with given linewidth. Input should be a file with one line for each assembly')
     parser.add_argument('--roc', action='store_true',
                                help='Plot roc style')
+    parser.add_argument('--cut_off', type=int, default=100,
+                               help='Length of contigs to use')
 
     args = parser.parse_args()
     if not args.names or not args.colors or not args.shapes:
@@ -99,4 +103,4 @@ if __name__ == "__main__":
         if not len(args.assemblies) == len(args.linewidths):
             raise(Exception('Number of linewidths should be equal to amount of fasta files given.'))
 
-    main(args.outputbase, args.assemblies, args.names, args.colors, args.shapes, args.linewidths, roc=args.roc)
+    main(args.outputbase, args.assemblies, args.names, args.colors, args.shapes, args.linewidths, roc=args.roc, cut_off=args.cut_off)

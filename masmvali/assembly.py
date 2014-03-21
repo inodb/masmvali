@@ -239,6 +239,16 @@ class ContigDict(MutableMapping):
                 self.contigs[fac] = c
             c.length = fa_contig_lengths[factot]
 
+    def get_ng50_and_lg50(self, genome_length):
+        sum_lens = 0
+        nr = 0
+        for name in sorted(self, key=lambda x: self.get(x).length, reverse=True):
+            nr += 1
+            sum_lens += self.get(name).length
+            if sum_lens >= genome_length:
+                return (nr, self.get(name).length)
+        return None
+
     def parse_cov_bed(self, covbedasm):
         """Take the default coverageBed output and store coverage mean for each contig in self."""
         cov_means = defaultdict(int)

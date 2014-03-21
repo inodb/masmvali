@@ -102,10 +102,8 @@ class ReferenceSet():
                             r.length += contig_length
                             #print c, reflens[c]
                             #TODO: the refstats stuff should be changed to
-                            # actually take a reference fasta and a bam file,
-                            # there's an error for ratio_covered as well if
-                            # there are no bases with 0 coverage
-                            r.ratio_covered += float(reflens[c].get("ratio_covered",1)) * contig_length
+                            # actually take a reference fasta and a bam file
+                            r.ratio_covered += float(reflens[c]["ratio_covered"]) * contig_length
                             r.cov += float(reflens[c]["cov"]) * contig_length
                             r.gc_content += float(reflens[c]["GC_content"]) * contig_length
                     if r.length == 0:

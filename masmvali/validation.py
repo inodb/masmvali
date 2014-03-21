@@ -3,36 +3,101 @@ MASMVALI - Metagenomic ASseMbly VALIdator
 
 Evaluates the quality of a metagenomic assembly given a reference metagenome.
 """
+import os
+
+import numpy as np
+
 from refgenome import ReferenceSet
 import nucmer
 import assembly
 import argparse
 from utils import print_dict2tsv, make_dir, read_2col_table
 
+from common.cache import property_cached
+
+
+class AssemblyValidationParser():
+    def __init__(self, directory, missing_value="N/A", sep="\t"):
+        self.directory = directory.rstrip('/')
+        self.missing_value = missing_value
+        self.sep = sep
+        self.check_validation_folder()
+
+    def check_validation_folder(self):
+        for fp in [self.directory + tsv for tsv in
+                ['/asm-stats.tsv', '/genome-contig-coverage.tsv',
+                    '/contig-purity.tsv', '/contig-lengths.tsv',
+                    '/contig-metagenome-coverage.tsv']]:
+            if not os.path.isfile(fp):
+                raise(Exception("File {0} not found".format(fp)))
+
+    def _get_numpy_array(self, filepath):
+        return np.genfromtxt(filepath, names=True, dtype=None,
+                missing_values=self.missing_value, usemask=True, delimiter=self.sep)
+
+    @property_cached
+    def asm_stats(self):
+        return self._get_numpy_array(self.directory + '/asm-stats.tsv')
+
+    @property_cached
+    def genome_contig_coverage(self):
+        return self._get_numpy_array(self.directory + '/genome-contig-coverage.tsv')
+
+    @property_cached
+    def contig_purity(self):
+        return self._get_numpy_array(self.directory + '/contig-purity.tsv')
+
+    @property_cached
+    def contig_lengths(self):
+        return self._get_numpy_array(self.directory + '/contig-lengths.tsv')
+
+    @property_cached
+    def contig_metagenome_coverage(self):
+        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage.tsv')
+
+    def get_nx_stats(self, x, cut_off=0):
+        cl = self.contig_lengths
+        if cl["length"][0] < cut_off:
+            raise(Exception("Longest contig shorter than {0}".format(cut_off)))
+        # percentage x of sum of contigs longer than cut_off
+        sum_cut_off = np.sum(cl["length"][cl["length"] >= cut_off])
+        sum_x_cut_off = sum_cut_off * (x / 100.0)
+        nx = np.where(cl["sum"] >= sum_x_cut_off)[0][0] + 1
+        lx = cl["length"][nx - 1]
+        return (lx, nx, sum_x_cut_off, sum_cut_off)
+
+    def get_nmgx_stats(self, x, mg_length):
+        """NMGX and LMGX stats as a function of X and MG. To normalize L50 and
+        N50 values, one often uses NG50 and NG50 length (LG50) where contigs
+        adding up to 50%% of the genome are larger or equal to NG50 length. In
+        this case 50 is replaced by X. The function returns (1) NMGX, which is
+        the number of contigs adding up to X percent of the length of the
+        metagenome (MG). And (2) the shortest length of those contigs i.e.
+        LMGX"""
+        cl = self.contig_lengths
+        if cl["sum"][-1] < (x / 100) * mg_length:
+            raise(Exception("Sum of contigs is smaller than x percent of mg_length"))
+        nmgx = np.where(cl["sum"] >= mg_length * (x / 100.0))[0][0] + 1
+        lmgx = cl["length"][nmgx - 1]
+        return (lmgx, nmgx)
 
 class AssemblyValidation():
     def __init__(self, *args, **kwargs):
-        exp_args = ["bamref", "bamasm", "referenceset", "refstatsfile",
-                "refphylfile", "covbedasm", "cut_off", "missing_value",
-                "contigs_to_refs_table"]
-
-        for k in kwargs:
-            if k not in exp_args:
-                raise(Exception("Unexpected keyword received %s" % k))
-
-        self.bamref = kwargs.get("bamref", None)
-        self.bamasm = kwargs.get("bamasm", None)
-        self.refs = kwargs.get("referenceset", None)
-        refstatsfile = kwargs.get("refstatsfile", None)
-        refphylfile = kwargs.get("refphylfile", None)
-        self.covbedasm = kwargs.get("covbedasm", None)
-        self.cut_off = kwargs.get("cut_off", 100)
-        self.missing_value = kwargs.get("missing_value", "N/A")
-        contigs_to_refs_table = kwargs.get("contigs_to_refs_table", None)
+        self.bamref = kwargs.pop("bamref", None)
+        self.bamasm = kwargs.pop("bamasm", None)
+        self.refs = kwargs.pop("referenceset", None)
+        refstatsfile = kwargs.pop("refstatsfile", None)
+        refphylfile = kwargs.pop("refphylfile", None)
+        self.covbedasm = kwargs.pop("covbedasm", None)
+        self.cut_off = kwargs.pop("cut_off", 100)
+        self.missing_value = kwargs.pop("missing_value", "N/A")
+        contigs_to_refs_table = kwargs.pop("contigs_to_refs_table", None)
         if contigs_to_refs_table:
             self.contigs_to_refs_dict = read_2col_table(contigs_to_refs_table, sep="\t")
         else:
             self.contigs_to_refs_table = None
+        if len(kwargs) > 0:
+            raise(Exception("Unexpected keyword argument found %s" % kwargs))
 
         self.asmfa = args[0]
         self.coordsfile = args[1]
@@ -76,10 +141,11 @@ class AssemblyValidation():
             self.coords.calc_genome_contig_cov_in_bases(self.refs, cut_off=self.cut_off, contigs_to_refs_dict=self.contigs_to_refs_dict)
 
         # Print assembly stats
+        nmg50, lmg50 = self.contigs.get_ng50_and_lg50(self.refs.mg_length) or (self.missing_value, self.missing_value)
         print_dict2tsv(d=dict(name=self.missing_value, global_purity=self.coords.glob_pur,
                               aln_purity=self.coords.aln_pur, aln_ratio=self.coords.aln_ratio,
                               l50=self.contigs.l50,
-                              n50=self.contigs.n50, trim_n=self.contigs.trim_n,
+                              n50=self.contigs.n50, nmg50=nmg50, lmg50=lmg50, trim_n=self.contigs.trim_n,
                               max_contig_length=self.contigs.max_length,
                               cut_off=self.cut_off,
                               trim_n_mapping=sum([hasattr(c, "aln_bases") for c in self.contigs.itervalues()]),
@@ -124,9 +190,11 @@ class AssemblyValidation():
             fh.write("cut_off\tmetagenome_cov_bases\tmetagenome_cov_percentage\n")
             for i in xrange(len(lengthsa)):
                 self.coords.calc_genome_contig_cov_in_bases(self.refs,
-                        cut_off=int(lengthsa[i]), count_contig_once=True,
-                        contigs_to_refs_dict=self.contigs_to_refs_dict)
-                fh.write("%d\t%d\t%d\n" % (lengthsa[i], self.coords.ref_sum_cov, (self.coords.ref_sum_cov * 100) / self.refs.mg_length))
+                    cut_off=int(lengthsa[i]), count_contig_once=True,
+                    contigs_to_refs_dict=self.contigs_to_refs_dict)
+                fh.write("%d\t%d\t%d\n" % (lengthsa[i],
+                    self.coords.ref_sum_cov, (self.coords.ref_sum_cov * 100) /
+                    self.refs.mg_length))
 
 
 if __name__ == "__main__":
