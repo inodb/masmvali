@@ -1,4 +1,3 @@
-import warnings
 import re
 import os
 import numpy as np
@@ -6,6 +5,16 @@ import numpy as np
 from refgenome import ReferenceSet
 from validation import AssemblyValidation, AssemblyValidationParser
 from utils import read_2col_table
+
+from common.cache import property_cached
+
+
+class AssemblyNotFound(Exception):
+        def __init__(self, value):
+            self.value = value
+
+        def __str__(self):
+            return repr(self.value)
 
 
 class MetAssemble():
@@ -58,7 +67,7 @@ class MetAssemble():
         self.refstatsfile = refstatsfile
         self.contigs_to_refs_file = contigs_to_refs_file
         self.contigs_to_refs_dict = read_2col_table(contigs_to_refs_file, sep=sep)
-        self.refs = ReferenceSet(refphylfile, refstatsfile, contigs_to_refs_dict=self.contigs_to_refs_dict)
+        self.refs = ReferenceSet(refphylfile, refstatsfile, self.contigs_to_refs_dict)
 
     def alphafy_strat(self, strategy):
         alpha_strat = re.sub("scaf[0-9]{2}", "scaf", strategy)
@@ -70,6 +79,25 @@ class MetAssemble():
     def has_kmer(strategy):
         # Should consist of 2 numbers and should not be 22 (this is minimus2bambus2)
         return len(re.sub("[a-z]", "", strategy)) > 1 and int(re.sub("[a-z]", "", strategy)) != 22
+
+    @property_cached
+    def avp(self):
+        """Return MetAssemble AssemblyValidationParser for all assemblies that
+        has each strategy as a property"""
+        class AssemblyValidationParsers:
+            pass
+
+        rv = AssemblyValidationParsers
+        # TODO: make this automatically detect the assemblies in the folders
+        asm_sets = self.get_asm_strategies(21, 75, 2)
+        for cat in asm_sets:
+            for a in asm_sets[cat]:
+                try:
+                    rv.__dict__[a] = self.get_metassemble_assembly_validation_parser(a)
+                except AssemblyNotFound:
+                    pass
+
+        return rv
 
     def get_kmer(self, strategy):
         # Only take first two numbers, the 2 in bambus2 can add a number
@@ -100,7 +128,7 @@ class MetAssemble():
 
         fp = d + '/assemblies' + fp
         if not os.path.isfile(fp):
-            warnings.warn("Strategy " + strategy + "'s fasta file does not exist: " + fp)
+            raise AssemblyNotFound("Strategy " + strategy + "'s fasta file does not exist: " + fp)
 
         return fp
 

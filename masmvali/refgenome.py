@@ -61,61 +61,47 @@ class Reference(EqualNameImpliesEquality):
 
 class ReferenceSet():
     """A set of references"""
-    def __init__(self, refphylfile, refstatsfile, missing_value="N/A", contigs_to_refs_dict=None):
+    def __init__(self, refphylfile, refstatsfile, contigs_to_refs_dict, missing_value="N/A"):
         # Get reference length/GC info
         reflens = readtable(refstatsfile, sep="\t")
 
         # Get phylogeny info
         rp = np.genfromtxt(refphylfile, names=True, dtype=None,
                            missing_values=missing_value, delimiter="\t")
-        tax_lvls = [rp.dtype.names[i] for i in range(4, 14)]
+        tax_lvls = [rp.dtype.names[i] for i in range(1, 11)]
 
         # Create reference dic
         self.refs = {}
+        refs_in_contigs_to_refs_dict = set(contigs_to_refs_dict.itervalues())
         for refrec in rp:
             # Only use references that actually have fasta sequences
-            # TODO: Should be possible to have multiple contigs for one
-            # refernce instead like with contigs_to_refs_dict
-            fn = refrec["fasta_name"]
-            if fn != missing_value:
+            if refrec["topname"] in refs_in_contigs_to_refs_dict:
                 # Phylogeny info
                 phylogeny = [refrec[t] for t in reversed(tax_lvls)]
                 r = Reference(phylogeny)
 
-                # Reference length/GC/ratio covered
-                if contigs_to_refs_dict is None:
-                    r.length = int(reflens[fn]["length"])
-                    r.ratio_covered = float(reflens[fn]["ratio_covered"])
-                    r.cov = float(reflens[fn]["cov"])
-                    r.gc_content = float(reflens[fn]["GC_content"])
-                else:
-                    #TODO: The whole contigs_to_refs_dict should be the default
-                    # Then there should just be one entry for each contig in
-                    # the contigs_to_refs_table
-                    r.length = 0
-                    r.ratio_covered = 0
-                    r.cov = 0
-                    r.gc_content = 0
-                    for c in contigs_to_refs_dict:
-                        if contigs_to_refs_dict[c] == refrec["topname"]:
-                            contig_length = int(reflens[c]["length"])
-                            r.length += contig_length
-                            #print c, reflens[c]
-                            #TODO: the refstats stuff should be changed to
-                            # actually take a reference fasta and a bam file
-                            r.ratio_covered += float(reflens[c]["ratio_covered"]) * contig_length
-                            r.cov += float(reflens[c]["cov"]) * contig_length
-                            r.gc_content += float(reflens[c]["GC_content"]) * contig_length
-                    if r.length == 0:
-                        raise(Exception("No contigs found for %s in contigs_to_refs_dict" % refrec["topname"]))
-                    # Divide by sum of contig lengths belonging to reference
-                    r.ratio_covered = r.ratio_covered / r.length
-                    r.cov = r.cov / r.length
-                    r.gc_content = r.cov / r.length
+                r.length = 0
+                r.ratio_covered = 0
+                r.cov = 0
+                r.gc_content = 0
+                for c in contigs_to_refs_dict:
+                    if contigs_to_refs_dict[c] == refrec["topname"]:
+                        contig_length = int(reflens[c]["length"])
+                        r.length += contig_length
+                        #print c, reflens[c]
+                        #TODO: the refstats stuff should be changed to
+                        # actually take a reference fasta and a bam file
+                        r.ratio_covered += float(reflens[c]["ratio_covered"]) * contig_length
+                        r.cov += float(reflens[c]["cov"]) * contig_length
+                        r.gc_content += float(reflens[c]["GC_content"]) * contig_length
+                if r.length == 0:
+                    raise(Exception("No contigs found for %s in contigs_to_refs_dict" % refrec["topname"]))
+                # Divide by sum of contig lengths belonging to reference
+                r.ratio_covered = r.ratio_covered / r.length
+                r.cov = r.cov / r.length
+                r.gc_content = r.cov / r.length
 
-                # refs indexable by genome id, fasta name and reference name
-                self.refs[refrec["fasta_name"]] = r
-                self.refs[refrec["gen_id"]] = r
+                # refs indexed by reference name
                 self.refs[r.name] = r
 
         self.mg_length = sum([r.length for r in self])

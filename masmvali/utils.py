@@ -55,7 +55,7 @@ def read_2col_table(tablefile, sep=None):
     for line in tfh:
         splits = line.strip().split(sep)
         if len(splits) != 2:
-            raise(Exception("Expected table with two columns"))
+            raise(Exception("Expected table with two columns. Line looks like:\n" + line))
         table[splits[0]] = splits[1]
 
     return(table)
