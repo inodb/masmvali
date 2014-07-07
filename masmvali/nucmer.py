@@ -7,14 +7,14 @@ class Coords:
         self.coordsfile = coordsfile
         self.cursor = get_coords_db_cursor(coordsfile)
 
-    def calc_genome_contig_cov_in_bases(self, refs, cut_off=100,
-            count_contig_once=False, contigs_to_refs_dict=None):
+    def calc_genome_contig_cov_in_bases(self, refs, cut_off, count_contig_once=True,
+            only_purest_alignments=True, contigs_to_refs_dict=None):
         # set coverage to 0 for all existing references
         for r in refs:
             r.contig_cov = 0
 
         # calcualte the coverage per reference
-        gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once)
+        gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once, only_purest_alignments)
 
         # copy over the results to reference set structure
         # TODO: contigs_to_refs_dict should be the default
@@ -88,18 +88,19 @@ def non_overlapping_sum(start, end, prev_end, idy=1.0):
         return [int((end - start + 1) * idy), end]
 
 
-def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True):
+def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True, only_purest_alignments=True):
     """Genome contig coverage is a metric that indicates how well the genome is
-    covered by contigs. For each contig only the purest alignment is
-    considered.  Purity is defined as COVQ * IDY / 10,000. If there are muliple
-    alignments for a contig with maximum purity, both are used unless
-    count_contig_once is set to True. Covered bases are only counted once and
-    computed by multiplying the length of the alignment in the reference (S1 -
-    E1 + 1) by the alignment identity (IDY).  If contigs overlap the first
-    contig based on its location in the reference genome is used. If the second
-    contig extends further than the first, the second's bases are added as well
-    using the IDY of the second. One might prefer to use the purest alignment
-    in case of overlap but I'll implement that only if persuaded with dinner.
+    covered by contigs. For each contig only the purest alignment is considered
+    (unless only_purest_alignments is True). Purity is defined as COVQ * IDY /
+    10,000. If there are muliple alignments for a contig with maximum purity,
+    both are used unless count_contig_once is set to True. Covered bases are
+    only counted once and computed by multiplying the length of the alignment
+    in the reference (S1 - E1 + 1) by the alignment identity (IDY).  If contigs
+    overlap the first contig based on its location in the reference genome is
+    used. If the second contig extends further than the first, the second's
+    bases are added as well using the IDY of the second. One might prefer to
+    use the purest alignment in case of overlap but I'll implement that only if
+    persuaded with dinner.
 
     Returns a dictionary of the genome contig coverage per genome as the number
     of non-overlapping bases that are covered by contigs aligning with maximum
@@ -108,33 +109,43 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True)
     refcov = {}  # nr of bases covered by contigs aligned with max purity
     prev_e1 = 0
 
-    if count_contig_once:
-        # Take one alignment in case a contig aligns to multiple locations
-        # with max_purity
-        query = """SELECT min(ID), * FROM (
-                    SELECT *, COVQ*IDY/10000 AS purity FROM Coords
+    if only_purest_alignments:
+        if count_contig_once:
+            # Take one alignment in case a contig aligns to multiple locations
+            # with max_purity
+            query = """SELECT min(ID), * FROM (
+                        SELECT *, COVQ*IDY/10000 AS purity FROM Coords
+                        INNER JOIN (
+                            SELECT QRYID AS max_qryid,
+                                max(COVQ*IDY/10000) AS max_purity
+                            FROM Coords
+                            GROUP BY QRYID
+                        ) ON QRYID==max_qryid
+                        WHERE LENQ >= :cut_off AND purity==max_purity
+                    )
+                    GROUP BY QRYID
+                    ORDER BY REFID, S1 ASC"""
+        else:
+            # Take all alignment in case a contig aligns to multiple locations
+            # with max_purity
+            query = """SELECT *, COVQ*IDY/10000 AS purity FROM Coords
                     INNER JOIN (
                         SELECT QRYID AS max_qryid,
-                               max(COVQ*IDY/10000) AS max_purity
+                                max(COVQ*IDY/10000) AS max_purity
                         FROM Coords
                         GROUP BY QRYID
                     ) ON QRYID==max_qryid
                     WHERE LENQ >= :cut_off AND purity==max_purity
-                )
-                GROUP BY QRYID
-                ORDER BY REFID, S1 ASC"""
+                    ORDER BY REFID, S1 ASC"""
     else:
-        # Take all alignment in case a contig aligns to multiple locations
-        # with max_purity
-        query = """SELECT *, COVQ*IDY/10000 AS purity FROM Coords
-                INNER JOIN (
-                    SELECT QRYID AS max_qryid,
-                            max(COVQ*IDY/10000) AS max_purity
+        if count_contig_once:
+            raise(Exception("count_contig_once=True and not only_purest_alignments=False is not implemented."))
+        else:
+            # Take all alignments regardless of purity
+            query = """SELECT *
                     FROM Coords
-                    GROUP BY QRYID
-                ) ON QRYID==max_qryid
-                WHERE LENQ >= :cut_off AND purity==max_purity
-                ORDER BY REFID, S1 ASC"""
+                    WHERE LENQ >= :cut_off
+                    ORDER BY REFID, S1 ASC"""
     for row in cursor.execute(query, dict(cut_off=cut_off)):
 
         if row["REFID"] in refcov:

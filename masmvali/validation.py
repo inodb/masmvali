@@ -52,8 +52,16 @@ class AssemblyValidationParser():
         return self._get_numpy_array(self.directory + '/contig-lengths.tsv')
 
     @property_cached
-    def contig_metagenome_coverage(self):
-        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage.tsv')
+    def contig_metagenome_coverage_purest_single_aln(self):
+        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage-purest-single-aln.tsv')
+
+    @property_cached
+    def contig_metagenome_coverage_purest_all_aln(self):
+        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage-purest-all-aln.tsv')
+
+    @property_cached
+    def contig_metagenome_coverage_all_aln(self):
+        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage-all-aln.tsv')
 
     def get_nx_stats(self, x, cut_off=0):
         cl = self.contig_lengths
@@ -80,6 +88,7 @@ class AssemblyValidationParser():
         nmgx = np.where(cl["sum"] >= mg_length * (x / 100.0))[0][0] + 1
         lmgx = cl["length"][nmgx - 1]
         return (lmgx, nmgx)
+
 
 class AssemblyValidation():
     def __init__(self, *args, **kwargs):
@@ -138,7 +147,10 @@ class AssemblyValidation():
 
         # Get all reference lengths
         if not hasattr(self.coords, "ref_sum_bases"):
-            self.coords.calc_genome_contig_cov_in_bases(self.refs, cut_off=self.cut_off, contigs_to_refs_dict=self.contigs_to_refs_dict)
+            self.coords.calc_genome_contig_cov_in_bases(self.refs,
+                    cut_off=self.cut_off, count_contig_once=True,
+                    only_purest_alignments=True,
+                    contigs_to_refs_dict=self.contigs_to_refs_dict)
 
         # Print assembly stats
         nmg50, lmg50 = self.contigs.get_ng50_and_lg50(self.refs.mg_length) or (self.missing_value, self.missing_value)
@@ -176,7 +188,23 @@ class AssemblyValidation():
                 sum_lens += self.contigs[name].length
                 fh.write("%s\t%d\t%d\n" % (name, self.contigs[name].length, sum_lens))
 
-    def write_contig_metagenome_cov(self, filename, dec_pow_min=2, dec_pow_max=10, div_per_pow=4):
+    def write_contig_metagenome_cov(self, filename, dec_pow_min=2, dec_pow_max=10, div_per_pow=4, incl_alignments='purest-single'):
+        """Write metagenome coverage to a file. The different alignments that
+        can be used are 'purest-single' for one purest alignment per contig,
+        'purest-all' for all purest alignments per contig 'all' for all
+        alignments regardless of purity."""
+        if incl_alignments == 'purest-single':
+            count_contig_once = True
+            only_purest_alignments = True
+        elif incl_alignments == 'purest-all':
+            count_contig_once = False
+            only_purest_alignments = True
+        elif incl_alignments == 'all':
+            count_contig_once = False
+            only_purest_alignments = False
+        else:
+            raise(Exception("Invalid value for incl_alignments, should be purest-single, purest-all or all: " + incl_alignments))
+
         # Only a subset of the contig lengths are used to determine metagenome
         # coverage, because using all takes too much time. Make list of
         # specified powers of 10, divide by the number of divisions one wants
@@ -187,14 +215,16 @@ class AssemblyValidation():
         lengthsa.sort()
         lengthsa.reverse()
         with open(filename, "w") as fh:
-            fh.write("cut_off\tmetagenome_cov_bases\tmetagenome_cov_percentage\n")
+            fh.write("cut_off\tmetagenome_cov_bases\tmetagenome_cov_percentage\tassembly_bases\n")
             for i in xrange(len(lengthsa)):
                 self.coords.calc_genome_contig_cov_in_bases(self.refs,
-                    cut_off=int(lengthsa[i]), count_contig_once=True,
+                    cut_off=int(lengthsa[i]), count_contig_once=count_contig_once,
+                    only_purest_alignments=only_purest_alignments,
                     contigs_to_refs_dict=self.contigs_to_refs_dict)
-                fh.write("%d\t%d\t%d\n" % (lengthsa[i],
+                fh.write("%d\t%d\t%d\t%d\n" % (lengthsa[i],
                     self.coords.ref_sum_cov, (self.coords.ref_sum_cov * 100) /
-                    self.refs.mg_length))
+                    self.refs.mg_length,
+                    sum([c.length for c in self.contigs.itervalues() if c.length >= lengthsa[i]])))
 
 
 if __name__ == "__main__":
@@ -233,4 +263,6 @@ if __name__ == "__main__":
     val.write_genome_contig_cov(masmdir + "/genome-contig-coverage.tsv")
     val.write_contig_purity(masmdir + "/contig-purity.tsv")
     val.write_contig_lengths(masmdir + "/contig-lengths.tsv")
-    val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage.tsv")
+    #val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-purest-single-aln.tsv", incl_alignments='purest-single')
+    #val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-purest-all-aln.tsv", incl_alignments='purest-all')
+    val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-all-aln.tsv", incl_alignments='all')
