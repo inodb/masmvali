@@ -139,7 +139,7 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True,
                     ORDER BY REFID, S1 ASC"""
     else:
         if count_contig_once:
-            raise(Exception("count_contig_once=True and not only_purest_alignments=False is not implemented."))
+            raise(Exception("count_contig_once=True and only_purest_alignments=False is not implemented."))
         else:
             # Take all alignments regardless of purity
             query = """SELECT *
@@ -159,8 +159,12 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True,
     return(refcov)
 
 
-def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100):
-    query = """SELECT *, COVQ*IDY/10000 AS purity FROM Coords
+def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100, skip_overhanging=True):
+    """Get the purest alignment per contig. By default overhanging contigs are
+    skipped to prevent invalid purity scores with genomes consisting of
+    multiple contigs and circular genomes."""
+    query = """SELECT *, COVQ*IDY/10000 AS purity
+            FROM Coords
             INNER JOIN (
                 SELECT QRYID AS max_qryid, max(COVQ*IDY/10000) AS max_purity FROM
                 Coords GROUP BY QRYID
@@ -169,8 +173,14 @@ def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100):
     if contigs is None:
         q_max_aln_purity = {}
         for row in cursor.execute(query, dict(cut_off=cut_off)):
-            q_max_aln_purity[row["QRYID"]] = dict(max_aln_purity=row["purity"],
-                                                length=row["LENQ"])
+            rev = row["S2"] > row["E2"]
+            if not skip_overhanging or \
+                    (rev and row["S1"] > row["LENQ"] - row["E2"] and
+                            row["LENR"] - row["E1"] >= row["S2"] - 1) or \
+                    (not rev and row["S1"] >= row["S2"] and
+                            row["LENR"] - row["E1"] >= row["LENQ"] - row["E2"]):
+                q_max_aln_purity[row["QRYID"]] = dict(max_aln_purity=row["purity"],
+                                                      length=row["LENQ"])
     else:
         q_max_aln_purity = contigs
         for row in cursor.execute(query, dict(cut_off=cut_off)):
@@ -180,8 +190,14 @@ def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100):
             #assert(contigs[row["QRYID"]].length == row["LENQ"])
             #if row["QRYID"] == "NODE_100004_length_263_cov_29.798479":
             #    import ipdb; print ipdb.set_trace()
-            q_max_aln_purity[row["QRYID"]].max_aln_purity = row["purity"]
-            q_max_aln_purity[row["QRYID"]].max_aln_strain = row["REFID"]
+            rev = row["S2"] > row["E2"]
+            if not skip_overhanging or \
+                    (rev and row["S1"] > row["LENQ"] - row["E2"] and
+                            row["LENR"] - row["E1"] >= row["S2"] - 1) or \
+                    (not rev and row["S1"] >= row["S2"] and
+                            row["LENR"] - row["E1"] >= row["LENQ"] - row["E2"]):
+                q_max_aln_purity[row["QRYID"]].max_aln_purity = row["purity"]
+                q_max_aln_purity[row["QRYID"]].max_aln_strain = row["REFID"]
 
     return(q_max_aln_purity)
 
