@@ -52,6 +52,10 @@ class AssemblyValidationParser():
         return self._get_numpy_array(self.directory + '/contig-lengths.tsv')
 
     @property_cached
+    def contig_metagenome_coverage(self):
+        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage.tsv')
+
+    @property_cached
     def contig_metagenome_coverage_purest_single_aln(self):
         return self._get_numpy_array(self.directory + '/contig-metagenome-coverage-purest-single-aln.tsv')
 
