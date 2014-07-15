@@ -11,6 +11,7 @@ from refgenome import ReferenceSet
 import nucmer
 import assembly
 import argparse
+import jellyfish
 from utils import print_dict2tsv, make_dir, read_2col_table
 
 from common.cache import property_cached
@@ -105,6 +106,8 @@ class AssemblyValidation():
         self.cut_off = kwargs.pop("cut_off", 100)
         self.missing_value = kwargs.pop("missing_value", "N/A")
         contigs_to_refs_table = kwargs.pop("contigs_to_refs_table", None)
+        self.jellyfish_output = kwargs.pop("jellyfish_output", None)
+        self.jellyfish_reffa = kwargs.pop("jellyfish_reffa", None)
         if contigs_to_refs_table:
             self.contigs_to_refs_dict = read_2col_table(contigs_to_refs_table, sep="\t")
         else:
@@ -138,6 +141,9 @@ class AssemblyValidation():
         # Calculate stats from nucmer alignments
         self.coords = nucmer.Coords(self.coordsfile)
         self.coords.calc_max_aln_purity_per_contig(self.contigs, self.cut_off)
+
+        if self.jellyfish_output and self.jellyfish_reffa:
+            self.jfr = jellyfish.JellyfishRef(args.jellyfish_reffa, args.jellyfish_output)
 
     def write_contig_purity(self, filename):
         with open(filename, "w") as fh:
@@ -249,16 +255,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "--contigs_to_refs_table", default=None, help="Table in tsv format,"
         " first column contig names, second column reference names, no header\n")
+    parser.add_argument(
+        "--jellyfish_output", default=None, help="Jellyfish output folder\n")
+    parser.add_argument(
+        "--jellyfish_reffa", default=None, help="Reference fasta file\n")
     args = parser.parse_args()
 
     if (args.bamref or args.bamasm or args.covbedasm) and not (args.bamref and args.bamasm and args.covbedasm):
         raise(Exception("All three options --bamref, --bamasm and --covbedasm required if read purity"
                         " computation is wanted"))
 
+    if (args.jellyfish_output or args.jellyfish_reffa) and not (args.jellyfish_output and args.jellyfish_reffa):
+        raise(Exception("Both jellyfish_output and jellyfish_reffa must be"
+                        " given in case jellyfish kmer analysis is desired"))
+
     # Calculate stats
     val = AssemblyValidation(args.contigs, args.coords, refphylfile=args.refphyl,
                              refstatsfile=args.refstats, bamref=args.bamref,
-                             bamasm=args.bamasm, covbedasm=args.covbedasm, contigs_to_refs_table=args.contigs_to_refs_table)
+                             bamasm=args.bamasm, covbedasm=args.covbedasm, contigs_to_refs_table=args.contigs_to_refs_table,
+                             jellyfish_output=args.jellyfish_output, jellyfish_reffa=args.jellyfish_reffa)
 
     # Print output
     masmdir = args.masmdir.rstrip('/')

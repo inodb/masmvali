@@ -1,7 +1,6 @@
 import os
 import errno
 
-
 def make_dir(directory):
     """Make directory unless existing. Ignore error in the latter case."""
     try:
