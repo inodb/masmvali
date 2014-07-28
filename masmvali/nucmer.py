@@ -8,13 +8,13 @@ class Coords:
         self.cursor = get_coords_db_cursor(coordsfile)
 
     def calc_genome_contig_cov_in_bases(self, refs, cut_off, count_contig_once=True,
-            only_purest_alignments=True, contigs_to_refs_dict=None):
+            only_purest_alignments=True, contigs_to_refs_dict=None, min_purity=0):
         # set coverage to 0 for all existing references
         for r in refs:
             r.contig_cov = 0
 
         # calcualte the coverage per reference
-        gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once, only_purest_alignments)
+        gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once, only_purest_alignments, min_purity)
 
         # copy over the results to reference set structure
         # TODO: contigs_to_refs_dict should be the default
@@ -88,7 +88,7 @@ def non_overlapping_sum(start, end, prev_end, idy=1.0):
         return [int((end - start + 1) * idy), end]
 
 
-def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True, only_purest_alignments=True):
+def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True, only_purest_alignments=True, min_purity=0):
     """Genome contig coverage is a metric that indicates how well the genome is
     covered by contigs. For each contig only the purest alignment is considered
     (unless only_purest_alignments is True). Purity is defined as COVQ * IDY /
@@ -121,7 +121,7 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True,
                             FROM Coords
                             GROUP BY QRYID
                         ) ON QRYID==max_qryid
-                        WHERE LENQ >= :cut_off AND purity==max_purity
+                        WHERE LENQ >= :cut_off AND purity >= :min_purity AND purity==max_purity
                     )
                     GROUP BY QRYID
                     ORDER BY REFID, S1 ASC"""
@@ -135,7 +135,7 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True,
                         FROM Coords
                         GROUP BY QRYID
                     ) ON QRYID==max_qryid
-                    WHERE LENQ >= :cut_off AND purity==max_purity
+                    WHERE LENQ >= :cut_off AND purity >= :min_purity AND purity==max_purity
                     ORDER BY REFID, S1 ASC"""
     else:
         if count_contig_once:
@@ -146,7 +146,7 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True,
                     FROM Coords
                     WHERE LENQ >= :cut_off
                     ORDER BY REFID, S1 ASC"""
-    for row in cursor.execute(query, dict(cut_off=cut_off)):
+    for row in cursor.execute(query, dict(cut_off=cut_off, min_purity=min_purity)):
 
         if row["REFID"] in refcov:
             [sumb, prev_e1] = non_overlapping_sum(row["S1"], row["E1"], prev_e1, row["IDY"] / 100.0)

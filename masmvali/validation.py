@@ -17,20 +17,31 @@ from utils import print_dict2tsv, make_dir, read_2col_table
 from common.cache import property_cached
 
 
+class AssemblyValidationParseError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return repr(self.msg)
+
+
 class AssemblyValidationParser():
-    def __init__(self, directory, missing_value="N/A", sep="\t"):
+    def __init__(self, directory, missing_value="N/A", sep="\t", check_folder=False):
         self.directory = directory.rstrip('/')
         self.missing_value = missing_value
         self.sep = sep
-        self.check_validation_folder()
+        if check_folder:
+            self.check_validation_folder()
 
     def check_validation_folder(self):
         for fp in [self.directory + tsv for tsv in
                 ['/asm-stats.tsv', '/genome-contig-coverage.tsv',
                     '/contig-purity.tsv', '/contig-lengths.tsv',
-                    '/contig-metagenome-coverage.tsv']]:
+                    '/contig-metagenome-coverage-purest-single-aln.tsv',
+                    '/contig-metagenome-coverage-purest-all-aln.tsv',
+                    '/contig-metagenome-coverage-all-aln.tsv']]:
             if not os.path.isfile(fp):
-                raise(Exception("File {0} not found".format(fp)))
+                raise(AssemblyValidationParseError("File {0} not found".format(fp)))
 
     def _get_numpy_array(self, filepath):
         return np.genfromtxt(filepath, names=True, dtype=None,
@@ -63,6 +74,14 @@ class AssemblyValidationParser():
     @property_cached
     def contig_metagenome_coverage_purest_all_aln(self):
         return self._get_numpy_array(self.directory + '/contig-metagenome-coverage-purest-all-aln.tsv')
+
+    @property_cached
+    def contig_metagenome_coverage_pure_only_single_aln(self):
+        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage-pure-only-single-aln.tsv')
+
+    @property_cached
+    def contig_metagenome_coverage_pure_only_all_aln(self):
+        return self._get_numpy_array(self.directory + '/contig-metagenome-coverage-pure-only-all-aln.tsv')
 
     @property_cached
     def contig_metagenome_coverage_all_aln(self):
@@ -200,18 +219,33 @@ class AssemblyValidation():
 
     def write_contig_metagenome_cov(self, filename, dec_pow_min=2, dec_pow_max=10, div_per_pow=4, incl_alignments='purest-single'):
         """Write metagenome coverage to a file. The different alignments that
-        can be used are 'purest-single' for one purest alignment per contig,
-        'purest-all' for all purest alignments per contig 'all' for all
-        alignments regardless of purity."""
+        can be used are
+
+        - 'purest-single' for one purest alignment per contig,
+        - 'purest-all' for all purest alignments per contig
+        - 'all' for all alignments regardless of purity
+        - 'pure-only-single' for one alignment per contig with purity 1.0.
+        - 'pure-only-all' for all alignments per contig with purity 1.0."""
         if incl_alignments == 'purest-single':
             count_contig_once = True
             only_purest_alignments = True
+            min_purity = 0
         elif incl_alignments == 'purest-all':
             count_contig_once = False
             only_purest_alignments = True
+            min_purity = 0
+        elif incl_alignments == 'pure-only-single':
+            count_contig_once = True
+            only_purest_alignments = True
+            min_purity = 1
+        elif incl_alignments == 'pure-only-all':
+            count_contig_once = False
+            only_purest_alignments = True
+            min_purity = 1
         elif incl_alignments == 'all':
             count_contig_once = False
             only_purest_alignments = False
+            min_purity = 0
         else:
             raise(Exception("Invalid value for incl_alignments, should be purest-single, purest-all or all: " + incl_alignments))
 
@@ -230,7 +264,7 @@ class AssemblyValidation():
                 self.coords.calc_genome_contig_cov_in_bases(self.refs,
                     cut_off=int(lengthsa[i]), count_contig_once=count_contig_once,
                     only_purest_alignments=only_purest_alignments,
-                    contigs_to_refs_dict=self.contigs_to_refs_dict)
+                    contigs_to_refs_dict=self.contigs_to_refs_dict, min_purity=min_purity)
                 fh.write("%d\t%d\t%d\t%d\n" % (lengthsa[i],
                     self.coords.ref_sum_cov, (self.coords.ref_sum_cov * 100) /
                     self.refs.mg_length,
@@ -282,6 +316,8 @@ if __name__ == "__main__":
     val.write_genome_contig_cov(masmdir + "/genome-contig-coverage.tsv")
     val.write_contig_purity(masmdir + "/contig-purity.tsv")
     val.write_contig_lengths(masmdir + "/contig-lengths.tsv")
-    #val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-purest-single-aln.tsv", incl_alignments='purest-single')
-    #val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-purest-all-aln.tsv", incl_alignments='purest-all')
+    val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-purest-single-aln.tsv", incl_alignments='purest-single')
+    val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-purest-all-aln.tsv", incl_alignments='purest-all')
     val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-all-aln.tsv", incl_alignments='all')
+    val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-pure-only-single-aln.tsv", incl_alignments='pure-only-single')
+    val.write_contig_metagenome_cov(masmdir + "/contig-metagenome-coverage-pure-only-all-aln.tsv", incl_alignments='pure-only-all')
