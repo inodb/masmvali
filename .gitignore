@@ -1,0 +1,10 @@
+# Python byte comde #
+#####################
+*.pyc
+# VIM #
+*.swp
+# Emacs generated files #
+*~
+dist/*
+build/*
+*.egg*
