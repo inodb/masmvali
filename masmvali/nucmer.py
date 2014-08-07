@@ -12,22 +12,26 @@ class Coords:
         # set coverage to 0 for all existing references
         for r in refs:
             r.contig_cov = 0
+            r.contig_dup = 0
 
         # calcualte the coverage per reference
-        gccov = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once, only_purest_alignments, min_purity)
+        gccov, gcdup = calc_genome_contig_cov_in_bases(self.cursor, cut_off, count_contig_once, only_purest_alignments, min_purity)
 
         # copy over the results to reference set structure
         # TODO: contigs_to_refs_dict should be the default
         if contigs_to_refs_dict:
             for k in gccov:
                 refs.get(contigs_to_refs_dict[k]).contig_cov += gccov[k]
+                refs.get(contigs_to_refs_dict[k]).contig_dup += gcdup[k]
         else:
             for k in gccov:
                 refs.get(k).contig_cov = gccov[k]
+                refs.get(k).contig_dup = gcdup[k]
 
         # Calculate global stats
         self.ref_sum_bases = sum(r.length for r in refs)
         self.ref_sum_cov = sum(r.contig_cov for r in refs)
+        self.ref_sum_dup = sum(r.contig_dup for r in refs)
 
     def calc_max_aln_purity_per_contig(self, contigs=None, cut_off=100):
         return(calc_max_aln_purity_per_contig(self.cursor, contigs=contigs, cut_off=cut_off))
@@ -75,17 +79,17 @@ def get_coords_db_cursor(coordsfile):
     return dbc.cursor()
 
 
-def non_overlapping_sum(start, end, prev_end, idy=1.0):
+def non_overlapping_sum(start, end, prev_end, idy):
     """Calculate non-overlapping sum of an interval based on previous end.
-    Returns overlap and previous end."""
+    Returns non-overlapping bases, previous end and overlapping bases."""
     if prev_end >= end:
-        return [0, prev_end]
+        return [0, prev_end, int((end - start + 1) * idy)]
     elif prev_end >= start:
         # 1-based coordinates
-        return [int((end - prev_end) * idy), end]
+        return [int((end - prev_end) * idy), end, int((prev_end - start + 1) * idy)]
     else:
         # 1-based coordinates
-        return [int((end - start + 1) * idy), end]
+        return [int((end - start + 1) * idy), end, 0]
 
 
 def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True, only_purest_alignments=True, min_purity=0):
@@ -103,10 +107,12 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True,
     persuaded with dinner.
 
     Returns a dictionary of the genome contig coverage per genome as the number
-    of non-overlapping bases that are covered by contigs aligning with maximum
-    purity.
+    of non-overlapping bases that are covered by contigs aligning with given
+    parameters. Also returns a similar dictionary indicating duplication in
+    number of overlapping bases.
     """
-    refcov = {}  # nr of bases covered by contigs aligned with max purity
+    refcov = {}  # nr of bases covered by contigs
+    refdup = {}  # nr of bases duplicated in contigs (could be multiple times the same base)
     prev_e1 = 0
 
     if only_purest_alignments:
@@ -149,14 +155,16 @@ def calc_genome_contig_cov_in_bases(cursor, cut_off=100, count_contig_once=True,
     for row in cursor.execute(query, dict(cut_off=cut_off, min_purity=min_purity)):
 
         if row["REFID"] in refcov:
-            [sumb, prev_e1] = non_overlapping_sum(row["S1"], row["E1"], prev_e1, row["IDY"] / 100.0)
+            [sumb, prev_e1, dupb] = non_overlapping_sum(row["S1"], row["E1"], prev_e1, row["IDY"] / 100.0)
             refcov[row["REFID"]] += sumb
+            refdup[row["REFID"]] += dupb
         else:
             refcov[row["REFID"]] = int((row["E1"] - row["S1"])
                                        * (row["IDY"] / 100.0)) + 1
+            refdup[row["REFID"]] = 0
             prev_e1 = row["E1"]
 
-    return(refcov)
+    return(refcov, refdup)
 
 
 def calc_max_aln_purity_per_contig(cursor, contigs=None, cut_off=100, skip_overhanging=True):
@@ -211,7 +219,7 @@ def calc_alignedbases_per_contig(cursor, contigs=None, cut_off=100):
         prev_end = 0
         for row in cursor.execute(query, dict(cut_off=cut_off)):
             if row["QRYID"] in q_aln_bases:
-                [sumb, prev_end] = non_overlapping_sum(row["start"], row["end"], prev_end, row["IDY"] / 100.0)
+                [sumb, prev_end, dupb] = non_overlapping_sum(row["start"], row["end"], prev_end, row["IDY"] / 100.0)
                 q_aln_bases[row["QRYID"]] += sumb
             else:
                 q_aln_bases[row["QRYID"]] = row["end"] - row["start"] + 1
@@ -224,7 +232,7 @@ def calc_alignedbases_per_contig(cursor, contigs=None, cut_off=100):
         prev_end = 0
         for row in cursor.execute(query, dict(cut_off=cut_off)):
             if hasattr(contigs[row["QRYID"]], "aln_bases"):
-                [sumb, prev_end] = non_overlapping_sum(row["start"], row["end"], prev_end, row["IDY"] / 100.0)
+                [sumb, prev_end, dupb] = non_overlapping_sum(row["start"], row["end"], prev_end, row["IDY"] / 100.0)
                 contigs[row["QRYID"]].aln_bases += sumb
             else:
                 contigs[row["QRYID"]].aln_bases = row["end"] - row["start"] + 1
